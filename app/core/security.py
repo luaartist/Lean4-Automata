@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import jwt
@@ -7,6 +8,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
+
+log = logging.getLogger(__name__)
 
 # ── Scheme ────────────────────────────────────────────────────────────────────
 bearer = HTTPBearer()
@@ -23,9 +26,13 @@ def _decode(token: str) -> dict[str, Any]:
             algorithms=[settings.JWT_ALGORITHM],
         )
     except jwt.InvalidTokenError as exc:
+        # SECURITY FIX: Log the specific failure server-side but return a
+        # generic message to the caller so internal token structure is not
+        # revealed to an attacker.
+        log.warning("JWT validation failure: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired token: {exc}",
+            detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 

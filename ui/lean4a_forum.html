@@ -270,6 +270,112 @@
             color: #ccc;
         }
 
+        /* JSON Syntax Highlighting */
+        .json-key {
+            color: #79c0ff;
+            font-weight: bold;
+        }
+
+        .json-string {
+            color: #a5d6a7;
+        }
+
+        .json-number {
+            color: #ffab40;
+        }
+
+        .json-boolean {
+            color: #ab47bc;
+        }
+
+        .json-null {
+            color: #ef5350;
+        }
+
+        /* Flash animation for new tickets */
+        @keyframes flash-new {
+            0%, 100% { background: rgba(255,255,255,0.05); }
+            50% { background: rgba(52, 152, 219, 0.3); }
+        }
+
+        .ticket-item.new-flash {
+            animation: flash-new 1s ease-in-out 3;
+        }
+
+        /* SSE Connection status badge */
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            font-size: 0.75em;
+            margin-left: 10px;
+        }
+
+        .connection-status.connected {
+            color: var(--success-green);
+        }
+
+        .connection-status.disconnected {
+            color: #888;
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .connection-status.connected .connection-dot {
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Auto-refresh toggle button */
+        .auto-refresh-toggle {
+            padding: 6px 12px;
+            background: rgba(155, 89, 182, 0.2);
+            border: 1px solid var(--accent-purple);
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+            margin-left: 10px;
+        }
+
+        .auto-refresh-toggle:hover {
+            background: rgba(155, 89, 182, 0.4);
+        }
+
+        .auto-refresh-toggle.active {
+            background: rgba(155, 89, 182, 0.4);
+            border-color: var(--accent-purple);
+        }
+
+        /* Flow grouping */
+        .flow-group-title {
+            font-size: 0.75em;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 15px 0 8px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .flow-group-title:first-child {
+            margin-top: 0;
+        }
+
         .session-selector {
             margin-bottom: 15px;
         }
@@ -344,6 +450,33 @@
 <body>
     <div class="header">
         <h1><i class="fas fa-code-branch"></i> Lean4-Automata Forum</h1>
+        
+        <!-- Serve Instructions Banner -->
+        <div style="margin: 15px auto; max-width: 700px; padding: 12px; background: rgba(52, 152, 219, 0.15); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 8px; font-size: 0.85em;">
+            <div style="font-weight: bold; margin-bottom: 8px; color: var(--accent-blue);">
+                <i class="fas fa-info-circle"></i> How to Serve This File:
+            </div>
+            <div style="font-family: 'Courier New', monospace; color: #aaa;">
+                <strong>Option 1 (Recommended):</strong> Go_Red server must be running on :8443<br>
+                <code style="background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
+                    cd Lean4-Automata && go run cmd/go_red/main.go
+                </code><br><br>
+                <strong>Option 2 (file:// fallback):</strong> Open directly, API auto-detects localhost:8443<br>
+                <code style="background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
+                    file:///path/to/lean4a_forum.html
+                </code>
+            </div>
+        </div>
+        
+        <!-- API Connection Error Banner (hidden by default) -->
+        <div id="api-error-banner" style="display: none; margin: 10px auto; max-width: 700px; padding: 12px; background: rgba(231, 76, 60, 0.2); border: 1px solid var(--error-red); border-radius: 8px; font-size: 0.9em;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>⚠️ Cannot reach Go_Red API at :8443</strong><br>
+            <span style="font-size: 0.85em; color: #ccc;">
+                Start the server with: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">go run cmd/go_red/main.go</code>
+            </span>
+        </div>
+        
         <div class="status-badges">
             <div class="badge-status" id="badge-python">
                 <i class="fas fa-circle-notch fa-spin"></i>
@@ -400,6 +533,9 @@
                 <button class="refresh-btn" onclick="loadTickets()">
                     <i class="fas fa-sync"></i>
                 </button>
+                <button class="auto-refresh-toggle" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
+                    <i class="fas fa-clock"></i> Auto-refresh
+                </button>
             </div>
             <div class="session-selector">
                 <select id="session-select">
@@ -416,15 +552,22 @@
     </div>
 
     <script>
-        const API_BASE = window.location.origin;
+        // FIX 1: API_BASE with fallback for file:// protocol
+        const API_BASE = window.location.origin === 'null' || window.location.origin === 'file://' || !window.location.origin 
+            ? 'http://localhost:8443' 
+            : window.location.origin;
+        
         let activeFlow = null;
         let eventSource = null;
+        let autoRefreshInterval = null;
+        let lastTicketIds = new Set();
 
         // ====================================================================
         // Initialization
         // ====================================================================
         
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('API_BASE:', API_BASE);
             checkHealth();
             loadFlows();
             loadTickets();
@@ -460,9 +603,10 @@
         function updateBadge(id, online, text) {
             const badge = document.getElementById(id);
             badge.className = `badge-status ${online ? 'online' : 'offline'}`;
+            // SECURITY FIX: escapeHtml prevents XSS from server-returned version strings
             badge.innerHTML = `
                 <i class="fas fa-${online ? 'check-circle' : 'times-circle'}"></i>
-                <span>${text}</span>
+                <span>${escapeHtml(text)}</span>
             `;
         }
 
@@ -473,49 +617,140 @@
         async function loadFlows() {
             try {
                 const resp = await fetch(`${API_BASE}/flows`);
+                
+                // FIX 2: Handle fetch failure with visible error banner
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                
                 const data = await resp.json();
                 renderFlows(data.flows || []);
+                
+                // Hide error banner if successful
+                document.getElementById('api-error-banner').style.display = 'none';
             } catch (e) {
                 console.error('Failed to load flows:', e);
-                document.getElementById('flow-buttons').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <p>Failed to load flows</p>
-                    </div>
-                `;
+                
+                // FIX 2: Show error banner
+                document.getElementById('api-error-banner').style.display = 'block';
+                
+                // FIX 6: Show static placeholder buttons for all 12 flows
+                renderStaticFlowButtons();
             }
+        }
+
+        // FIX 6: Static flow buttons grouped by category
+        function renderStaticFlowButtons() {
+            const container = document.getElementById('flow-buttons');
+            
+            const flowGroups = {
+                'Lean DB': [
+                    { name: 'lean_sorry_scan', desc: 'Scan for sorry statements', icon: 'search' },
+                    { name: 'lean_float_scan', desc: 'Floating symbols query', icon: 'ghost' },
+                    { name: 'lean_file_interconnect', desc: 'File dependencies', icon: 'project-diagram' },
+                    { name: 'lean_db_health', desc: 'Database health', icon: 'heartbeat' },
+                    { name: 'quick_proof_report', desc: 'Proof status report', icon: 'file-alt' }
+                ],
+                'TPH GPU': [
+                    { name: 'tph_inference', desc: 'TPH model inference', icon: 'brain' },
+                    { name: 'tph_status', desc: 'TPH server status', icon: 'server' }
+                ],
+                'System': [
+                    { name: 'env_check', desc: 'Python environment', icon: 'check-circle' },
+                    { name: 'gpu_check', desc: 'AMD GPU status', icon: 'microchip' }
+                ],
+                'Research': [
+                    { name: 'formula_match', desc: 'DynamicFlux formula match', icon: 'calculator' },
+                    { name: 'wolfram_verify', desc: 'Wolfram verification', icon: 'flask' },
+                    { name: 'lean_diff_mathlib', desc: 'Mathlib comparison', icon: 'code-branch' }
+                ]
+            };
+            
+            let html = '<div style="opacity: 0.7;">';
+            for (const [groupName, flows] of Object.entries(flowGroups)) {
+                html += `<div class="flow-group-title">${groupName}</div>`;
+                flows.forEach(flow => {
+                    html += `
+                        <button class="flow-btn" onclick="runFlow('${flow.name}')" id="flow-${flow.name}" disabled>
+                            <i class="fas fa-${flow.icon}"></i>
+                            <span>${flow.desc}</span>
+                        </button>
+                    `;
+                });
+            }
+            html += '<div style="margin-top: 15px; font-size: 0.8em; color: #888; text-align: center;">';
+            html += '<i class="fas fa-info-circle"></i> Static fallback — server offline';
+            html += '</div></div>';
+            
+            container.innerHTML = html;
         }
 
         function renderFlows(flows) {
             const container = document.getElementById('flow-buttons');
             if (flows.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-folder-open"></i>
-                        <p>No flows available</p>
-                    </div>
-                `;
+                renderStaticFlowButtons();
                 return;
             }
 
-            container.innerHTML = flows.map(flow => {
-                const icon = getFlowIcon(flow.name);
-                return `
-                    <button class="flow-btn" onclick="runFlow('${flow.name}')" id="flow-${flow.name}">
-                        <i class="fas fa-${icon}"></i>
-                        <span>${flow.description}</span>
-                    </button>
-                `;
-            }).join('');
+            // Group flows by category based on tags
+            const flowsByCategory = {
+                'Lean DB': [],
+                'TPH GPU': [],
+                'System': [],
+                'Research': []
+            };
+            
+            flows.forEach(flow => {
+                if (flow.tags.includes('lean')) {
+                    flowsByCategory['Lean DB'].push(flow);
+                } else if (flow.tags.includes('tph') || flow.tags.includes('gpu')) {
+                    flowsByCategory['TPH GPU'].push(flow);
+                } else if (flow.tags.includes('env') || flow.tags.includes('diagnostics')) {
+                    flowsByCategory['System'].push(flow);
+                } else {
+                    flowsByCategory['Research'].push(flow);
+                }
+            });
+
+            let html = '';
+            for (const [category, categoryFlows] of Object.entries(flowsByCategory)) {
+                if (categoryFlows.length > 0) {
+                    html += `<div class="flow-group-title">${escapeHtml(category)}</div>`;
+                    categoryFlows.forEach(flow => {
+                        const icon = getFlowIcon(flow.name);
+                        // SECURITY FIX: Use data-flow-name attribute (no inline onclick) and
+                        // escapeHtml on all server-supplied strings to prevent stored XSS.
+                        html += `
+                            <button class="flow-btn" data-flow-name="${escapeHtml(flow.name)}" id="flow-${escapeHtml(flow.name)}">
+                                <i class="fas fa-${escapeHtml(icon)}"></i>
+                                <span>${escapeHtml(flow.description)}</span>
+                            </button>
+                        `;
+                    });
+                }
+            }
+            
+            container.innerHTML = html;
+
+            // SECURITY FIX: Attach click handlers via addEventListener rather than
+            // inline onclick so malicious flow.name values cannot execute JS.
+            container.querySelectorAll('.flow-btn[data-flow-name]').forEach(btn => {
+                btn.addEventListener('click', () => runFlow(btn.dataset.flowName));
+            });
         }
 
         function getFlowIcon(flowName) {
             const icons = {
                 'lean_sorry_scan': 'search',
                 'lean_float_scan': 'ghost',
+                'lean_file_interconnect': 'project-diagram',
+                'lean_db_health': 'heartbeat',
+                'quick_proof_report': 'file-alt',
                 'lean_diff_mathlib': 'code-branch',
                 'tph_inference': 'brain',
+                'tph_status': 'server',
                 'env_check': 'check-circle',
+                'gpu_check': 'microchip',
                 'formula_match': 'calculator',
                 'wolfram_verify': 'flask'
             };
@@ -532,37 +767,74 @@
             const btn = document.getElementById(`flow-${flowName}`);
             btn.classList.add('running');
             btn.disabled = true;
+            
+            // FIX 3: Add connection status indicator
+            updateConnectionStatus(flowName, 'connected');
 
             clearLog();
             logMessage('info', `▶ Starting flow: ${flowName}`);
 
             try {
-                eventSource = new EventSource(`${API_BASE}/run/flow/${flowName}`);
-
-                eventSource.addEventListener('log', (e) => {
-                    const data = JSON.parse(e.data);
-                    logMessage(data.level, data.message);
+                // SECURITY FIX (Finding 7): EventSource is GET-only but server requires POST.
+                // Use fetch() + ReadableStream to enable POST-based SSE streaming.
+                const resp = await fetch(`${API_BASE}/run/flow/${flowName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+                    body: JSON.stringify({ params: {} }),
                 });
 
-                eventSource.addEventListener('result', (e) => {
-                    const data = JSON.parse(e.data);
-                    logMessage('info', `✅ Flow completed. Ticket ID: ${data.ticket_id}`);
-                    loadTickets();
-                });
-
-                eventSource.addEventListener('done', (e) => {
-                    const data = JSON.parse(e.data);
-                    logMessage('info', `⏱ Duration: ${data.duration_ms}ms`);
+                if (!resp.ok) {
+                    logMessage('error', `❌ Server returned ${resp.status}: ${resp.statusText}`);
                     stopFlow(flowName);
-                });
+                    return;
+                }
 
-                eventSource.onerror = (e) => {
-                    logMessage('error', '❌ Connection error or flow failed');
-                    stopFlow(flowName);
-                };
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                // Store reader so stopFlow() can cancel it
+                eventSource = { close: () => reader.cancel() };
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Parse SSE frames from buffer
+                    const frames = buffer.split('\n\n');
+                    buffer = frames.pop(); // keep incomplete last frame
+
+                    for (const frame of frames) {
+                        let eventType = 'message', dataStr = '';
+                        for (const line of frame.split('\n')) {
+                            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+                            if (line.startsWith('data: ')) dataStr = line.slice(6);
+                        }
+                        if (!dataStr) continue;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            if (eventType === 'log') {
+                                logMessage(data.level || 'info', data.message || dataStr);
+                            } else if (eventType === 'result') {
+                                logMessage('info', `✅ Flow completed. Ticket ID: ${data.ticket_id}`);
+                                loadTickets();
+                            } else if (eventType === 'done') {
+                                logMessage('info', `⏱ Duration: ${data.duration_ms}ms`);
+                                stopFlow(flowName);
+                                return;
+                            } else if (eventType === 'error') {
+                                logMessage('error', `❌ ${data.message || 'Flow error'}`);
+                                stopFlow(flowName);
+                                return;
+                            }
+                        } catch { logMessage('info', dataStr); }
+                    }
+                }
+                stopFlow(flowName);
 
             } catch (e) {
-                logMessage('error', `Failed to start flow: ${e.message}`);
+                logMessage('error', `Failed to start flow: ${escapeHtml(e.message)}`);
                 stopFlow(flowName);
             }
         }
@@ -578,8 +850,31 @@
                 btn.classList.remove('running');
                 btn.disabled = false;
             }
+            
+            // FIX 3: Update connection status to disconnected
+            updateConnectionStatus(flowName, 'disconnected');
 
             activeFlow = null;
+        }
+
+        // FIX 3: Connection status display
+        function updateConnectionStatus(flowName, status) {
+            const btn = document.getElementById(`flow-${flowName}`);
+            if (!btn) return;
+            
+            // Remove existing status badge
+            const existingBadge = btn.querySelector('.connection-status');
+            if (existingBadge) {
+                existingBadge.remove();
+            }
+            
+            // Add new status badge during execution
+            if (status === 'connected') {
+                const badge = document.createElement('span');
+                badge.className = 'connection-status connected';
+                badge.innerHTML = '<span class="connection-dot"></span>Live';
+                btn.appendChild(badge);
+            }
         }
 
         // ====================================================================
@@ -613,17 +908,46 @@
         // Tickets Panel
         // ====================================================================
 
-        async function loadTickets() {
+        // FIX 4: Auto-refresh toggle
+        function toggleAutoRefresh() {
+            const btn = document.getElementById('auto-refresh-toggle');
+            
+            if (autoRefreshInterval) {
+                // Disable auto-refresh
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-clock"></i> Auto-refresh';
+            } else {
+                // Enable auto-refresh every 30 seconds
+                autoRefreshInterval = setInterval(() => {
+                    loadTickets(true); // Pass true to indicate auto-refresh
+                }, 30000);
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Auto (30s)';
+            }
+        }
+
+        async function loadTickets(isAutoRefresh = false) {
             try {
                 const resp = await fetch(`${API_BASE}/tickets?limit=50`);
                 const data = await resp.json();
-                renderTickets(data.tickets || []);
+                
+                // FIX 4: Detect new tickets and flash them
+                const newTicketIds = new Set(data.tickets.map(t => t.id));
+                const addedTickets = isAutoRefresh 
+                    ? [...newTicketIds].filter(id => !lastTicketIds.has(id))
+                    : [];
+                
+                lastTicketIds = newTicketIds;
+                
+                renderTickets(data.tickets || [], addedTickets);
             } catch (e) {
                 console.error('Failed to load tickets:', e);
             }
         }
 
-        function renderTickets(tickets) {
+        function renderTickets(tickets, newTicketIds = []) {
             const container = document.getElementById('tickets-container');
             
             if (tickets.length === 0) {
@@ -636,22 +960,32 @@
                 return;
             }
 
-            container.innerHTML = tickets.map(ticket => `
-                <div class="ticket-item" onclick="toggleTicket('${ticket.id}')">
-                    <div class="ticket-header">
-                        <div class="ticket-flow-name">${ticket.flow_name}</div>
-                        <div class="ticket-status ${ticket.status}">${ticket.status}</div>
+            container.innerHTML = tickets.map(ticket => {
+                // FIX 4: Add flash class to new tickets
+                const isNew = newTicketIds.includes(ticket.id);
+                // SECURITY FIX: ticket.id is a ULID (alphanumeric only) — safe for onclick/id.
+                // ticket.flow_name comes from handleCreateTicket which accepts arbitrary user
+                // input, so it MUST be HTML-escaped to prevent stored XSS.
+                const safeId       = ticket.id.replace(/[^0-9A-Za-z]/g, '');
+                const safeFlowName = escapeHtml(ticket.flow_name);
+                const safeStatus   = escapeHtml(ticket.status);
+                return `
+                    <div class="ticket-item ${isNew ? 'new-flash' : ''}" onclick="toggleTicket('${safeId}')">
+                        <div class="ticket-header">
+                            <div class="ticket-flow-name">${safeFlowName}</div>
+                            <div class="ticket-status ${safeStatus}">${safeStatus}</div>
+                        </div>
+                        <div class="ticket-meta">
+                            ID: ${escapeHtml(ticket.id.substring(0, 12))}...
+                            <br>
+                            ${new Date(ticket.created_at * 1000).toLocaleString()}
+                        </div>
+                        <div class="ticket-content" id="ticket-content-${safeId}">
+                            <div class="spinner"></div> Loading...
+                        </div>
                     </div>
-                    <div class="ticket-meta">
-                        ID: ${ticket.id.substring(0, 12)}...
-                        <br>
-                        ${new Date(ticket.created_at * 1000).toLocaleString()}
-                    </div>
-                    <div class="ticket-content" id="ticket-content-${ticket.id}">
-                        <div class="spinner"></div> Loading...
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         async function toggleTicket(ticketId) {
@@ -667,15 +1001,46 @@
                     const resp = await fetch(`${API_BASE}/ticket/${ticketId}`);
                     const ticket = await resp.json();
                     
+                    // FIX 5: JSON syntax highlighting
                     const outputJson = JSON.stringify(JSON.parse(ticket.output_json), null, 2);
-                    content.innerHTML = `<pre>${outputJson}</pre>`;
+                    const highlightedJson = syntaxHighlightJson(outputJson);
+                    content.innerHTML = `<pre>${highlightedJson}</pre>`;
                     content.classList.add('show');
                     ticketItem.classList.add('expanded');
                 } catch (e) {
-                    content.innerHTML = `<pre>Error loading ticket: ${e.message}</pre>`;
+                    // SECURITY FIX: escape e.message before inserting into innerHTML
+                    content.innerHTML = `<pre>Error loading ticket: ${escapeHtml(e.message)}</pre>`;
                     content.classList.add('show');
                 }
             }
+        }
+
+        // SECURITY FIX: HTML-escape helper — prevents stored XSS when inserting
+        // server-supplied strings into innerHTML / attribute contexts.
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(String(str)));
+            return div.innerHTML;
+        }
+
+        // FIX 5: Simple JSON syntax highlighting without external libraries
+        function syntaxHighlightJson(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
         }
     </script>
 </body>

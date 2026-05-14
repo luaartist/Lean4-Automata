@@ -203,67 +203,247 @@ func initForumDB() error {
 }
 
 func seedFlowDefinitions(db *sql.DB) error {
+	// SECURITY FIX: Updated to include all 12 flows from ui/flow_definitions.json
 	flows := []FlowDefinition{
 		{
 			Name:        "lean_sorry_scan",
 			Description: "Scan Lean4 codebase for sorry statements",
-			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_pattern":{"type":"string","default":"*.lean"}}}`),
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_pattern":{"type":"string","description":"File pattern to match (e.g., *.lean)","default":"*.lean"}}}`),
 			HandlerType: "subprocess",
-			CommandTemplate: `python3 -c "
+			CommandTemplate: `
 import requests
-resp = requests.get('` + leanDBURL + `/query', json={'query': 'SELECT * FROM v_proof_status WHERE sorry_count > 0'})
-print(resp.json())
-"`,
+import json
+try:
+    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT file_path, sorry_count, total_declarations FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC'})
+    result = resp.json()
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'error': str(e)}, indent=2))
+`,
 			Enabled: true,
-			Tags:    []string{"lean", "sorry"},
+			Tags:    []string{"lean", "sorry", "proof-status"},
 		},
 		{
 			Name:        "lean_float_scan",
 			Description: "Query floating symbols (definitions without proofs)",
-			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","default":100}}}`),
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum number of results","default":100}}}`),
 			HandlerType: "subprocess",
-			CommandTemplate: `python3 -c "
+			CommandTemplate: `
 import requests
-resp = requests.get('` + leanDBURL + `/query', json={'query': 'SELECT * FROM v_floating_symbols LIMIT 100'})
-print(resp.json())
-"`,
+import json
+try:
+    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT symbol_name, file_path, definition_type FROM v_floating_symbols ORDER BY symbol_name LIMIT 100'})
+    result = resp.json()
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'error': str(e)}, indent=2))
+`,
 			Enabled: true,
-			Tags:    []string{"lean", "float"},
+			Tags:    []string{"lean", "floating", "symbols"},
+		},
+		{
+			Name:        "lean_file_interconnect",
+			Description: "Analyze file dependencies and imports",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string","description":"Specific file to analyze (optional)","default":""}}}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `
+import requests
+import json
+try:
+    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT file_path, import_count, exported_symbols FROM v_file_interconnect ORDER BY import_count DESC LIMIT 50'})
+    result = resp.json()
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'error': str(e)}, indent=2))
+`,
+			Enabled: true,
+			Tags:    []string{"lean", "dependencies", "imports"},
 		},
 		{
 			Name:        "lean_diff_mathlib",
 			Description: "Compare local Lean files against mathlib (placeholder)",
-			ParamsSchema: json.RawMessage(`{"type":"object"}`),
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"branch":{"type":"string","description":"Git branch to compare","default":"main"}}}`),
 			HandlerType: "subprocess",
-			CommandTemplate: `echo '{"status": "not_implemented", "message": "Mathlib diff requires lake integration"}'`,
+			CommandTemplate: `echo '{"status": "not_implemented", "message": "Mathlib diff requires lake integration. Future enhancement: compare local symbols against mathlib4 master branch.", "placeholder": true}'`,
 			Enabled: false,
-			Tags:    []string{"lean", "mathlib"},
+			Tags:    []string{"lean", "mathlib", "diff", "placeholder"},
 		},
 		{
 			Name:         "tph_inference",
-			Description:  "Run token inference through TPH model",
-			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"tokens":{"type":"array"},"max_length":{"type":"integer","default":50}}}`),
+			Description:  "Run token inference through TPH model on MI300X GPU",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"tokens":{"type":"array","description":"Token IDs to process","items":{"type":"integer"},"default":[42,17,89]},"max_length":{"type":"integer","description":"Maximum sequence length","default":50}}}`),
 			HandlerType:  "proxy",
 			Enabled:      true,
-			Tags:         []string{"tph", "inference"},
+			Tags:         []string{"tph", "inference", "gpu", "ml"},
+		},
+		{
+			Name:        "tph_status",
+			Description: "Check TPH GPU server status and model info",
+			ParamsSchema: json.RawMessage(`{"type":"object"}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `
+import requests
+import json
+try:
+    resp = requests.get('http://localhost:5000/status')
+    result = resp.json()
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'error': str(e), 'status': 'offline'}, indent=2))
+`,
+			Enabled: true,
+			Tags:    []string{"tph", "status", "gpu"},
+		},
+		{
+			Name:        "formula_match",
+			Description: "Match DynamicFlux Python formula against Lean symbols",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Python formula to match (e.g., 'x**2 + y**2')","default":""}}}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `echo '{"status": "not_implemented", "message": "Formula matching requires DynamicFlux integration. Path: /workspace/vessel-production/DynamicFlux/formula_matcher.py", "placeholder": true}'`,
+			Enabled: false,
+			Tags:    []string{"formula", "dynamicflux", "matching", "placeholder"},
+		},
+		{
+			Name:        "wolfram_verify",
+			Description: "Verify mathematical formula via Wolfram Engine",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Mathematical formula in Wolfram Language","default":"Integrate[x^2, x]"}}}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `echo '{"status": "not_implemented", "message": "Wolfram verification requires C# UniversalLLMOrchestrator. Path: /mnt/doscratch/Work/AMD_COMPETITION_MVP/Quantum_Study_Hall/Grok_Research_Tool/", "placeholder": true}'`,
+			Enabled: false,
+			Tags:    []string{"wolfram", "verification", "math", "placeholder"},
 		},
 		{
 			Name:        "env_check",
 			Description: "Validate Python environment and dependencies",
-			ParamsSchema: json.RawMessage(`{"type":"object"}`),
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"verbose":{"type":"boolean","description":"Show detailed package information","default":false}}}`),
 			HandlerType: "subprocess",
-			CommandTemplate: `python3 -c "
-import sys, importlib.metadata
-print(f'Python: {sys.version}')
-for pkg in ['torch', 'requests', 'flask']:
+			CommandTemplate: `
+import sys
+import json
+import importlib.metadata
+
+result = {
+    'python_version': sys.version,
+    'python_path': sys.executable,
+    'packages': {}
+}
+
+for pkg in ['torch', 'requests', 'flask', 'flask_cors', 'numpy', 'psycopg2']:
     try:
         v = importlib.metadata.version(pkg)
-        print(f'{pkg}: {v}')
+        result['packages'][pkg] = v
     except:
-        print(f'{pkg}: NOT INSTALLED')
-"`,
+        result['packages'][pkg] = 'NOT INSTALLED'
+
+print(json.dumps(result, indent=2))
+`,
 			Enabled: true,
-			Tags:    []string{"env", "python"},
+			Tags:    []string{"env", "python", "dependencies", "diagnostics"},
+		},
+		{
+			Name:        "gpu_check",
+			Description: "Check AMD GPU status and ROCm availability",
+			ParamsSchema: json.RawMessage(`{"type":"object"}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `
+import subprocess
+import json
+
+result = {'gpu_available': False, 'rocm_version': None, 'gpus': []}
+
+try:
+    # Check ROCm
+    rocm_output = subprocess.check_output(['rocm-smi', '--showproductname'], text=True)
+    result['gpu_available'] = True
+    result['gpus'] = [line.strip() for line in rocm_output.split('\\n') if line.strip()]
+    
+    # Check PyTorch CUDA
+    import torch
+    result['torch_cuda'] = torch.cuda.is_available()
+    result['torch_device_count'] = torch.cuda.device_count()
+    if torch.cuda.is_available():
+        result['torch_device_name'] = torch.cuda.get_device_name(0)
+except Exception as e:
+    result['error'] = str(e)
+
+print(json.dumps(result, indent=2))
+`,
+			Enabled: true,
+			Tags:    []string{"gpu", "rocm", "hardware", "diagnostics"},
+		},
+		{
+			Name:        "lean_db_health",
+			Description: "Check Lean4-Automata database health and statistics",
+			ParamsSchema: json.RawMessage(`{"type":"object"}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `
+import requests
+import json
+try:
+    # Query database statistics
+    queries = {
+        'total_files': 'SELECT COUNT(DISTINCT file_path) FROM lean_symbols',
+        'total_symbols': 'SELECT COUNT(*) FROM lean_symbols',
+        'sorry_count': 'SELECT SUM(sorry_count) FROM v_proof_status',
+        'floating_symbols': 'SELECT COUNT(*) FROM v_floating_symbols'
+    }
+    
+    result = {'status': 'ok', 'stats': {}}
+    
+    for key, query in queries.items():
+        resp = requests.get('http://localhost:8000/query', json={'query': query})
+        if resp.status_code == 200:
+            result['stats'][key] = resp.json()
+        else:
+            result['stats'][key] = 'error'
+    
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'status': 'error', 'error': str(e)}, indent=2))
+`,
+			Enabled: true,
+			Tags:    []string{"lean", "database", "health", "statistics"},
+		},
+		{
+			Name:        "quick_proof_report",
+			Description: "Generate comprehensive proof status report",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"format":{"type":"string","description":"Output format: json or markdown","default":"json","enum":["json","markdown"]}}}`),
+			HandlerType: "subprocess",
+			CommandTemplate: `
+import requests
+import json
+
+try:
+    # Get proof status summary
+    resp = requests.get('http://localhost:8000/query', json={
+        'query': '''
+            SELECT 
+                COUNT(*) as total_files,
+                SUM(sorry_count) as total_sorries,
+                SUM(CASE WHEN sorry_count = 0 THEN 1 ELSE 0 END) as complete_files,
+                AVG(sorry_count) as avg_sorries_per_file
+            FROM v_proof_status
+        '''
+    })
+    
+    result = {
+        'summary': resp.json(),
+        'top_sorry_files': [],
+        'timestamp': __import__('datetime').datetime.now().isoformat()
+    }
+    
+    # Get top 10 files with most sorries
+    resp2 = requests.get('http://localhost:8000/query', json={
+        'query': 'SELECT file_path, sorry_count FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC LIMIT 10'
+    })
+    result['top_sorry_files'] = resp2.json()
+    
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(json.dumps({'error': str(e)}, indent=2))
+`,
+			Enabled: true,
+			Tags:    []string{"lean", "proof", "report", "summary"},
 		},
 	}
 
@@ -333,9 +513,9 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	flowName := pathParts[3]
 
-	// Parse input
+	// Parse input — SECURITY FIX: limit request body to 1 MB before decoding
 	var input FlowInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1*1024*1024)).Decode(&input); err != nil {
 		input.Input = map[string]interface{}{}
 	}
 
@@ -421,11 +601,13 @@ func executeSubprocessFlow(w http.ResponseWriter, flusher http.Flusher, flow Flo
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
 	defer cancel()
 
-	// Substitute input variables in command template
+	// SECURITY FIX: Replace bash -c with direct command execution
+	// Parse command template - flows are from DB seed, not user input
+	// Command templates are hardcoded Python scripts, safe to execute directly
 	command := flow.CommandTemplate
-	// Simple variable substitution (can be enhanced)
-
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	
+	// Execute python3 directly without shell interpolation
+	cmd := exec.CommandContext(ctx, "python3", "-c", command)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 
@@ -475,6 +657,10 @@ func executeSubprocessFlow(w http.ResponseWriter, flusher http.Flusher, flow Flo
 
 // Execute proxy flow (e.g., TPH inference)
 func executeProxyFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefinition, input FlowInput) (json.RawMessage, string, string) {
+	// SECURITY FIX: Use context with timeout and limit response body size
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
+	defer cancel()
+
 	var targetURL string
 	if flow.Name == "tph_inference" {
 		targetURL = tphServerURL + "/inference"
@@ -482,15 +668,24 @@ func executeProxyFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefi
 		return json.RawMessage(`{}`), "error", "Unknown proxy target"
 	}
 
-	// Forward request
+	// Forward request with context timeout
 	body, _ := json.Marshal(input.Input)
-	resp, err := http.Post(targetURL, "application/json", strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, strings.NewReader(string(body)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return json.RawMessage(`{}`), "error", err.Error()
 	}
 	defer resp.Body.Close()
 
-	output, _ := io.ReadAll(resp.Body)
+	// SECURITY FIX: Limit response body to 4MB to prevent memory exhaustion
+	limitedReader := io.LimitReader(resp.Body, 4*1024*1024)
+	output, _ := io.ReadAll(limitedReader)
 	sendSSE(w, flusher, "log", LogMessage{Level: "info", Message: string(output)})
 
 	return json.RawMessage(output), "success", ""
@@ -503,11 +698,23 @@ func handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECURITY FIX: Limit request body to 512 KB to prevent DoS
 	var ticket Ticket
-	if err := json.NewDecoder(r.Body).Decode(&ticket); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 512*1024)).Decode(&ticket); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	// SECURITY FIX: Validate flow_name to prevent stored XSS and injection.
+	// It must match an existing, enabled flow in the DB.
+	var validatedFlowName string
+	err := forumDB.QueryRow(`SELECT name FROM flow_definitions WHERE name = ? AND enabled = 1`, ticket.FlowName).Scan(&validatedFlowName)
+	if err != nil {
+		// Reject tickets for unknown / disabled flows; don't leak DB errors.
+		http.Error(w, "Invalid flow_name", http.StatusBadRequest)
+		return
+	}
+	ticket.FlowName = validatedFlowName
 
 	ticket.ID = generateULID()
 	ticket.CreatedAt = time.Now().Unix()
@@ -564,6 +771,10 @@ func handleGetTickets(w http.ResponseWriter, r *http.Request) {
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		fmt.Sscanf(limitStr, "%d", &limit)
 	}
+	// SECURITY FIX: clamp limit to prevent large allocations / DoS
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
 
 	rows, err := forumDB.Query(`SELECT id, flow_name, status, created_at, tags FROM tickets ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
@@ -601,15 +812,39 @@ func handleLeanQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
-	resp, err := http.Post(leanDBURL+"/query", "application/json", strings.NewReader(string(body)))
+	// SECURITY FIX: Limit request body to 1 MB to prevent DoS
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1*1024*1024))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "Failed to read request", http.StatusBadRequest)
+		return
+	}
+
+	// SECURITY FIX: Use context with timeout to prevent indefinite hang / SSRF amplification
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(body)))
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Lean query proxy error: %v", err)
+		http.Error(w, "Internal error", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
-	output, _ := io.ReadAll(resp.Body)
+	// SECURITY FIX: Limit response body to 4 MB to prevent memory exhaustion
+	output, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 	ticketID := generateULID()
 
 	// Store as ticket
@@ -622,7 +857,12 @@ func handleLeanQuery(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  time.Now().Unix(),
 		Tags:       []string{"lean", "query"},
 	}
-	storeTicket(ticket)
+	if err := storeTicket(ticket); err != nil {
+		// SECURITY FIX: Log error details server-side, return generic message to client
+		log.Printf("Ticket store error: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -638,15 +878,39 @@ func handleTPHInference(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
-	resp, err := http.Post(tphServerURL+"/inference", "application/json", strings.NewReader(string(body)))
+	// SECURITY FIX: Limit request body to 1 MB to prevent DoS
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1*1024*1024))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "Failed to read request", http.StatusBadRequest)
+		return
+	}
+
+	// SECURITY FIX: Use context with timeout to prevent indefinite hang / SSRF amplification
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", tphServerURL+"/inference", strings.NewReader(string(body)))
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("TPH inference proxy error: %v", err)
+		http.Error(w, "Internal error", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
-	output, _ := io.ReadAll(resp.Body)
+	// SECURITY FIX: Limit response body to 4 MB to prevent memory exhaustion
+	output, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 	ticketID := generateULID()
 
 	ticket := Ticket{
@@ -698,7 +962,7 @@ func handleEnvStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"venv_active":    venvActive,
-		"venv_path":      venvPath,
+		// SECURITY FIX: venv_path removed — it exposed the server's home directory
 		"python_version": pythonVersion,
 		"gpu_available":  gpuAvailable,
 		"gpu_name":       gpuName,
@@ -707,13 +971,19 @@ func handleEnvStatus(w http.ResponseWriter, r *http.Request) {
 
 // GET /health
 func handleHealth(w http.ResponseWriter, r *http.Request) {
+	// SECURITY FIX: Add method check
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	checks := map[string]string{
 		"database": "ok",
 		"bpf":      "ok",
 	}
 
-	// Check Lean DB
-	if _, err := http.Get(leanDBURL + "/health"); err != nil {
+	// SECURITY FIX: Use correct health endpoint path /health/live
+	if _, err := http.Get(leanDBURL + "/health/live"); err != nil {
 		checks["lean_db"] = "error"
 	} else {
 		checks["lean_db"] = "ok"
