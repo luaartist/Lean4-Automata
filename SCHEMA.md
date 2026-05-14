@@ -139,6 +139,7 @@ Aggregates per-module statistics:
 - `project_id` - Project ID
 - `total_symbols` - Total symbol count
 - `theorem_count` - Count by kind
+- `proof_completion` - `float` — `(theorem_count - sorry_in_proof_count) / theorem_count`; 1.0 = fully proved
 - `def_count` - Count by kind
 - `axiom_count` - Count by kind
 - `instance_count` - Count by kind

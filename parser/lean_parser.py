@@ -27,6 +27,7 @@ from pathlib import Path
 _SORRY_RE = re.compile(r"\bsorry\b")
 _ADMIT_RE = re.compile(r"\badmit\b")
 _NATIVE_DECIDE_RE = re.compile(r"\bnative_decide\b")
+_DECIDE_RE = re.compile(r"\bdecide\b")
 _DEBUG_CMD_RE = re.compile(r"^\s*#(?:check|eval|print|reduce|assert)\b", re.MULTILINE)
 
 # Run on *original* text (comments preserved): detects annotation patterns.
@@ -125,13 +126,31 @@ class FileMetrics:
     sorry_count: int = 0           # raw `sorry` occurrences in code
     admit_count: int = 0           # raw `admit` occurrences in code
     sorry_lines: list[int] = field(default_factory=list)  # 1-based line numbers
-    sorry_in_proof_count: int = 0  # theorems/lemmas whose body contains sorry
+    sorry_in_proof_count: int = 0  # theorems/lemmas whose body contains sorry/admit/native_decide
     theorem_count: int = 0         # theorems + lemmas
+
+    # ── Proof Completion Formula ────────────────────────────────────────────────
+    # proof_completion = (theorem_count - sorry_in_proof_count) / theorem_count
+    #
+    # sorry_in_proof_count counts theorems/lemmas whose body span contains ANY of:
+    #   - `sorry`         — explicit placeholder (always incomplete)
+    #   - `admit`         — alias for sorry in some Lean versions
+    #   - `native_decide` — kernel-level decision procedure; treated as sorry-equivalent
+    #                        because it can silently succeed on false propositions with
+    #                        wrong instances, and is fragile across Lean versions
+    #
+    # Note: `decide` is tracked separately as `decide_count` but does NOT penalise
+    # proof_completion — it is a legitimate tactic but worth auditing.
+    #
+    # A file with proof_completion = 1.0 has zero sorry/admit/native_decide in any theorem.
+    # ──────────────────────────────────────────────────────────────────────────────
     proof_completion: float = 1.0  # (theorem_count - sorry_in_proof_count) / theorem_count
 
     # ── Fragility signals ──────────────────────────────────────────────────────
-    native_decide_count: int = 0   # native_decide (slow, kernel-level, fragile)
-    debug_command_count: int = 0   # leftover #check / #eval / #print in source
+    native_decide_count: int = 0          # raw `native_decide` occurrences in code
+    native_decide_in_proof_count: int = 0 # theorems whose body contains native_decide
+    decide_count: int = 0                 # `decide` tactic calls — verify these are truly proven
+    debug_command_count: int = 0          # leftover #check / #eval / #print in source
 
     # ── Symbol counts ──────────────────────────────────────────────────────────
     noncomputable_count: int = 0   # `noncomputable` declarations
@@ -325,6 +344,7 @@ def parse_text(content: str) -> ParsedFileContent:
     sorry_lines = [scrubbed.count("\n", 0, m.start()) + 1 for m in sorry_matches]
     admit_count = len(_ADMIT_RE.findall(scrubbed))
     native_decide_count = len(_NATIVE_DECIDE_RE.findall(scrubbed))
+    decide_count = len(_DECIDE_RE.findall(scrubbed))
     debug_command_count = len(_DEBUG_CMD_RE.findall(scrubbed))
 
     # ── Symbol extraction with per-declaration sorry detection ────────────────
@@ -336,6 +356,7 @@ def parse_text(content: str) -> ParsedFileContent:
     simp_attr_count = 0
     theorem_count = 0
     sorry_in_proof_count = 0
+    native_decide_in_proof_count = 0
 
     for i, m in enumerate(all_matches):
         name = m.group("name")
@@ -366,14 +387,22 @@ def parse_text(content: str) -> ParsedFileContent:
         seen.add((full, line))
 
         # Check if sorry appears in this declaration's body span.
+        # native_decide is treated as sorry-equivalent: it can silently pass on
+        # false propositions (wrong instances, fragile across Lean versions).
         span_end = all_matches[i + 1].start() if i + 1 < len(all_matches) else len(scrubbed)
         body = scrubbed[m.start():span_end]
-        has_sorry = bool(_SORRY_RE.search(body)) or bool(_ADMIT_RE.search(body))
+        has_sorry = (
+            bool(_SORRY_RE.search(body))
+            or bool(_ADMIT_RE.search(body))
+            or bool(_NATIVE_DECIDE_RE.search(body))  # treat as sorry-equivalent
+        )
 
         if kind in ("theorem", "lemma"):
             theorem_count += 1
             if has_sorry:
                 sorry_in_proof_count += 1
+            if bool(_NATIVE_DECIDE_RE.search(body)):
+                native_decide_in_proof_count += 1
 
         symbols.append(
             ParsedSymbol(
@@ -406,6 +435,8 @@ def parse_text(content: str) -> ParsedFileContent:
         theorem_count=theorem_count,
         proof_completion=proof_completion,
         native_decide_count=native_decide_count,
+        native_decide_in_proof_count=native_decide_in_proof_count,
+        decide_count=decide_count,
         debug_command_count=debug_command_count,
         noncomputable_count=noncomputable_count,
         instance_count=instance_count,

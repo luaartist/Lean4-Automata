@@ -1,4 +1,20 @@
 services:
+  # ── Profile Groups ────────────────────────────────────────────────────────────
+  # Core (default, no profile flag needed):
+  #   postgres, redis, nginx, app, app_ingestion, worker, watcher
+  #
+  # Optional profiles:
+  #   frontend     — Next.js UI:        docker compose --profile frontend up
+  #   admin        — Celery Flower:     docker compose --profile admin up
+  #   observability — Grafana + Loki:   docker compose --profile observability up
+  #
+  # Minimal dev stack (3 services only):
+  #   docker compose up postgres redis app
+  #
+  # Full stack:
+  #   docker compose --profile frontend --profile admin --profile observability up
+  # ─────────────────────────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:17
     restart: unless-stopped
@@ -134,6 +150,8 @@ services:
   flower:
     image: mher/flower:2.0
     restart: unless-stopped
+    profiles:
+      - admin
     command: ["celery", "--broker=${REDIS_URL:-redis://redis:6379}", "flower", "--port=5555"]
     environment:
       CELERY_BROKER_URL: ${REDIS_URL:-redis://redis:6379}
@@ -150,6 +168,8 @@ services:
       dockerfile: Dockerfile
     image: lean4-automata-frontend:dev
     restart: unless-stopped
+    profiles:
+      - frontend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:

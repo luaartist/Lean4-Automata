@@ -1,0 +1,12 @@
+# docker-compose.override.yml.example
+# Copy to docker-compose.override.yml and edit for your machine.
+# This file is gitignored — never commit local paths here.
+
+services:
+  watcher:
+    volumes:
+      # Map your local Lean source tree into the container.
+      # The watcher uses inotify on /lean-src to detect file changes.
+      - /path/to/your/lean/src:/lean-src:ro
+      # Example for this machine:
+      # - /mnt/doscratch/root-relocated/root/workspace/torchlean4physics_REPO_PREP/src:/lean-src:ro
