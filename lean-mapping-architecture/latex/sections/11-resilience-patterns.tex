@@ -1,0 +1,37 @@
+\chapter{Resilience Patterns}
+
+\section{Retry Policy}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Operation} & \textbf{Max retries} & \textbf{Back-off} & \textbf{Jitter} \\
+\midrule
+DB query (transient) & 3 & Exponential (100\,ms) & $\pm$50\,ms \\
+Redis GET/SET        & 2 & Fixed 50\,ms          & -- \\
+Celery task          & 3 & Exponential (1\,s)    & $\pm$500\,ms \\
+Mathlib API          & 2 & Exponential (500\,ms) & $\pm$200\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Circuit Breaker}
+Wraps calls to Mathlib docs API and Wolfram Engine.
+States: CLOSED $\to$ OPEN (after 5 failures) $\to$ HALF-OPEN (after 30\,s)
+$\to$ CLOSED (on probe success).
+
+\section{Back-Pressure}
+Celery queue depth $>$\,1\,000: Ingestion API returns 429.
+\texttt{asyncpg} pool exhaustion: API returns 503 + \texttt{Retry-After}.
+
+\section{Graceful Degradation}
+\begin{itemize}
+  \item Redis down: queries fall through to PostgreSQL.
+  \item Celery down: ingestion queued in-memory; manual retry.
+  \item File Watcher down: next full scan catches up.
+  \item Wolfram down: enrichment skipped; core data unaffected.
+\end{itemize}
+
+\section{Timeout Hierarchy}
+Client (30\,s) $>$ LB (25\,s) $>$ API (20\,s) $>$ DB (command\_timeout 30\,s
+but query-level 20\,s).  Each layer strictly shorter than its caller.

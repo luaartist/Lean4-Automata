@@ -1,0 +1,40 @@
+\chapter{Development Workflow}
+
+\section{Local Setup}
+\begin{enumerate}
+  \item Clone and \texttt{pip install -e ".[dev]"}.
+  \item \texttt{docker compose up -d postgres redis}.
+  \item \texttt{alembic upgrade head}.
+  \item \texttt{uvicorn app.query:app --reload --port 8000}.
+  \item \texttt{cd frontend \&\& npm install \&\& npm run dev}.
+\end{enumerate}
+
+\section{Branching}
+\texttt{main} (stable) $\leftarrow$ \texttt{develop} (integration)
+$\leftarrow$ \texttt{feat/<ticket>} / \texttt{fix/<ticket>}.
+
+\section{CI Pipeline (GitHub Actions)}
+On PR: lint (Ruff, mypy, ESLint, tsc), unit tests (pytest, vitest),
+integration tests (testcontainers), security scan (pip-audit, npm audit),
+migration test.
+
+On merge to main: build images, push to registry, deploy to staging.
+
+\section{Quality Gates}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Gate} & \textbf{Tool} & \textbf{Threshold} \\
+\midrule
+Python lint  & Ruff          & Zero errors \\
+Python types & mypy (strict) & Zero errors \\
+Python tests & pytest        & 80\,\% coverage \\
+JS lint      & ESLint        & Zero errors \\
+JS types     & tsc --noEmit  & Zero errors \\
+JS tests     & Vitest        & 80\,\% coverage \\
+CVEs         & pip-audit / npm audit & Zero high/critical \\
+\bottomrule
+\end{tabular}
+\end{table}

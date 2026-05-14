@@ -1,0 +1,36 @@
+\chapter{Security Model}
+
+\section{Authentication Context}
+Read-only endpoints are public with IP-based rate limiting.
+Admin/Ingestion endpoints require an HS256 JWT bearer token validated by
+middleware.  Signing key from \texttt{LEAN\_MAP\_JWT\_SECRET} env var.
+
+\section{Rate Limiting}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Tier} & \textbf{Limit} & \textbf{Scope} \\
+\midrule
+Anonymous     & 60\,req/min  & Per IP \\
+Authenticated & 600\,req/min & Per JWT \texttt{sub} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Input Validation}
+All parameters validated by Pydantic~v2.  \texttt{full\_name} regex:
+\verb|^[A-Za-z_][A-Za-z0-9_.]*$|.  \texttt{depth} clamped to [1,\,10].
+
+\section{SQL Injection Prevention}
+All queries use parameterised statements (\texttt{\$1}, \texttt{\$2})
+via \texttt{asyncpg}.  No string interpolation in any SQL path.
+
+\section{Secrets Management}
+Environment variables in Kubernetes \texttt{Secret} objects; never baked
+into images.
+
+\section{Network Segmentation}
+Admin API not exposed publicly.  PostgreSQL and Redis listen on private
+subnet only.  Egress restricted to Mathlib docs API and (optionally)
+Wolfram Cloud.

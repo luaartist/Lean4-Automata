@@ -1,0 +1,53 @@
+\chapter{Data Model}
+
+\section{Entity--Relationship Overview}
+
+\begin{lstlisting}[language={}]
+projects 1--* files 1--* symbols
+                |              |
+                |              +--* dependencies (source -> target)
+                |              +--* external_refs
+                |
+                +--* file_dependencies (source_file -> target_file)
+
+index_runs *--1 projects
+\end{lstlisting}
+
+\section{Core Tables}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Table} & \textbf{Key columns} & \textbf{Notes} \\
+\midrule
+\texttt{projects}          & name, root\_path, lean\_version & UNIQUE(name) \\
+\texttt{files}             & module\_name, file\_hash, imports (JSONB) & UNIQUE(project, path) \\
+\texttt{symbols}           & full\_name, kind (ENUM), signature, docstring & UNIQUE(project, full\_name) \\
+\texttt{dependencies}      & source, target, type (ENUM), confidence & Composite unique \\
+\texttt{file\_dependencies} & source\_file, target\_file & Module imports \\
+\texttt{external\_refs}    & symbol\_id, external\_name, mathlib\_url & Mathlib links \\
+\texttt{index\_runs}       & run\_type, status, errors (JSONB) & Audit trail \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Indexing Strategy}
+
+\begin{itemize}
+  \item B-tree on \texttt{symbols(full\_name)} for $O(1)$ lookup.
+  \item GIN on \texttt{symbols(attributes)} for JSONB containment.
+  \item GIN/tsvector on \texttt{symbols(docstring || name)} for FTS.
+  \item Composite B-tree on \texttt{dependencies(source, target)}.
+\end{itemize}
+
+\section{Materialised Views}
+
+\textbf{dependency\_stats}: per-symbol dependency count, usage count, centrality score.
+\textbf{module\_metrics}: per-module symbol count by kind, average length.
+Both refreshed concurrently on an hourly schedule.
+
+\section{Migration Strategy}
+
+Alembic manages schema versions.  Every migration is forward-only in
+production, tested in CI, and backwards-compatible for one release cycle.

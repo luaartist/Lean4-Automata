@@ -1,0 +1,44 @@
+\chapter{Backend Performance}
+
+\section{Connection Pooling}
+\texttt{asyncpg} pool: \texttt{min\_size=10}, \texttt{max\_size=50},
+\texttt{command\_timeout=30\,s}.  For $>$\,50 concurrent replicas, introduce
+PgBouncer in transaction-pooling mode.
+
+\section{Query Optimisation}
+Transitive dependencies via recursive CTE with depth cap.  Full-text
+search via GIN index on \texttt{to\_tsvector}.  Batch inserts via
+\texttt{executemany} in batches of 500 rows.
+
+\section{Caching Tiers}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Tier} & \textbf{Tech} & \textbf{TTL} & \textbf{Scope} \\
+\midrule
+L1 & Redis         & 1\,h / 15\,min & Cluster-wide \\
+L2 & HTTP headers  & 60\,s + SWR     & CDN / browser \\
+L3 & React Query   & 5--10\,min      & Per browser tab \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Performance Targets}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Operation} & \textbf{p95 target} \\
+\midrule
+Symbol lookup (cached)            & 5\,ms \\
+Symbol lookup (uncached)          & 50\,ms \\
+Transitive deps (depth~5)        & 200\,ms \\
+FTS (10\,K symbols)               & 100\,ms \\
+Full scan (10\,K files)           & 5\,min \\
+Incremental update (1 file)       & 2\,s \\
+\bottomrule
+\end{tabular}
+\end{table}

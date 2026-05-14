@@ -1,0 +1,36 @@
+\chapter{Frontend Architecture}
+
+\section{Technology Choice}
+Next.js~15 (App Router) with React~19.  Server Components for data-heavy
+views; Client Components for interactivity.  State: Zustand (global) +
+React Query (server state).  Styling: Tailwind CSS~3.4.
+
+\section{Directory Layout}
+\begin{lstlisting}[language={}]
+frontend/
+  app/                 # Next.js App Router
+    projects/[name]/   # Layer 1 - Project overview
+      modules/[mod]/   # Layer 2 - Module detail
+        symbols/[sym]/ # Layer 3 - Symbol detail
+    search/page.tsx
+  components/
+    visualizations/    # DependencyGraph, SymbolChart
+    exploration/       # BreadcrumbNav, SymbolList
+    search/            # SearchBar, FilterPanel
+    ui/                # Shared primitives
+  lib/
+    api/               # Typed fetch client
+    graph/             # Layout algorithms
+    hooks/             # useSymbol, useDependencies
+  state/               # Zustand store + slices
+\end{lstlisting}
+
+\section{React Query Integration}
+Each data type has a dedicated hook with appropriate \texttt{staleTime}:
+symbol metadata (5\,min), dependency graphs (10\,min), search results (2\,min).
+Prefetching on hover for instant drill-down.
+
+\section{Error Handling}
+Global \texttt{ErrorBoundary} for render errors.  API errors surface via
+React Query's \texttt{error} state---toasts for transient, inline for 404.
+Network errors trigger exponential back-off retry (max~3).

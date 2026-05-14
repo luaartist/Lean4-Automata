@@ -1,0 +1,38 @@
+\chapter{Operational Runbook}
+
+\section{Trigger Full Reindex}
+\begin{lstlisting}[language=bash]
+curl -X POST https://internal/api/v1/admin/index/start \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"project_path":"/data/mathlib4","mode":"full_scan"}'
+\end{lstlisting}
+
+Monitor: \texttt{GET /api/v1/admin/index/status/\{run\_id\}}.
+
+\section{Incident Playbooks}
+
+\subsection{High Query Latency (p95 $>$ 500\,ms)}
+Check Grafana DB dashboard $\to$ \texttt{pg\_stat\_activity} $\to$
+cancel long queries $\to$ verify Redis health.
+
+\subsection{Index Staleness ($>$\,48\,h)}
+Inspect \texttt{index\_runs} $\to$ check errors JSONB $\to$ restart
+watcher if stuck $\to$ re-trigger full scan.
+
+\subsection{Redis Unavailable}
+Auto-degrades.  Verify recovery via Grafana cache-hit metric within 15\,min.
+
+\subsection{DB Connection Exhaustion}
+Check \texttt{pg\_stat\_activity} $\to$ terminate idle-in-transaction
+$\to$ consider PgBouncer.
+
+\section{Backup \& Restore}
+\begin{lstlisting}[language=bash]
+# Backup
+pg_dump -Fc lean_map > lean_map_$(date +%Y%m%d).dump
+
+# Restore
+pg_restore --clean lean_map_20250713.dump
+\end{lstlisting}
+
+WAL archiving enabled for point-in-time recovery.

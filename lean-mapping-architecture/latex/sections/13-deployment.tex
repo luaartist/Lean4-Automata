@@ -1,0 +1,34 @@
+\chapter{Deployment}
+
+\section{Container Images}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Image} & \textbf{Base} & \textbf{Port} \\
+\midrule
+lean-map-query    & python:3.12-slim & 8000 \\
+lean-map-ingest   & python:3.12-slim & 8001 \\
+lean-map-admin    & python:3.12-slim & 8002 \\
+lean-map-worker   & python:3.12-slim & -- \\
+lean-map-watcher  & python:3.12-slim & -- \\
+lean-map-frontend & node:20-slim     & 3000 \\
+postgres          & postgres:16-alpine & 5432 \\
+redis             & redis:7-alpine   & 6379 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Kubernetes Resources}
+Query API: 3 replicas, 250\,m--1 CPU, 256--512\,Mi.
+Workers: 4 replicas, 500\,m--2 CPU, 512\,Mi--1\,Gi.
+
+\section{Zero-Downtime Deploy}
+Rolling update (\texttt{maxUnavailable: 0}, \texttt{maxSurge: 1}).
+Readiness probe: \texttt{GET /health}.  Liveness: same, 30\,s initial delay.
+Migrations run as a Kubernetes Job before deployment.
+
+\section{Backup}
+Daily \texttt{pg\_dump} to object storage; WAL archiving for PITR.
+Redis: no backup (ephemeral).

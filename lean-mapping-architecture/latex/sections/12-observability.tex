@@ -1,0 +1,48 @@
+\chapter{Observability}
+
+\section{Three Pillars}
+\textbf{Metrics}: Prometheus + Grafana.
+\textbf{Logs}: structured JSON to stdout.
+\textbf{Traces}: OpenTelemetry $\to$ Jaeger.
+
+\section{Correlation IDs}
+Every request carries \texttt{X-Request-ID}---attached to all log lines,
+propagated to Celery tasks, returned in responses and error envelopes.
+
+\section{Key Metrics}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metric} & \textbf{Type} & \textbf{Labels} \\
+\midrule
+\texttt{api\_request\_duration\_seconds} & Histogram & method, endpoint, status \\
+\texttt{db\_query\_duration\_seconds}    & Histogram & query\_type \\
+\texttt{cache\_operations\_total}        & Counter   & operation \\
+\texttt{index\_staleness\_seconds}       & Gauge     & project \\
+\texttt{celery\_queue\_depth}            & Gauge     & queue\_name \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Alerting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Alert} & \textbf{Condition} & \textbf{Severity} \\
+\midrule
+HighQueryLatency & p95 $>$ 500\,ms for 5\,min & Warning \\
+CacheHitRateLow  & $<$\,70\,\% for 15\,min     & Warning \\
+IndexStale        & $>$\,48\,h                  & Critical \\
+ErrorRateHigh     & 5xx $>$\,1\,\% for 5\,min  & Critical \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Dashboards}
+Pre-built Grafana dashboards: Overview (rate, errors, latency), Cache
+(hit/miss, memory), Indexing (duration, errors), Database (connections,
+query latency).

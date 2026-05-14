@@ -1,0 +1,62 @@
+\chapter{System Architecture}
+
+\section{Component Diagram}
+
+\begin{lstlisting}[language={},title={High-level component map}]
++--------------------------------------------------------------+
+|              Load Balancer (Nginx / Traefik)                  |
+|            SSL termination - rate limiting                    |
++----------+-----------------------------------+---------------+
+           |                                   |
+   +-------v--------+                +--------v--------+
+   | Query API :8000 |                | Ingestion :8001 |
+   | (read-only)     |                | (read/write)    |
+   +-------+---------+                +--------+--------+
+           |                                   |
+      +----v----+                        +-----v------+
+      |  Redis  |<-- invalidation -------|Task Queue  |
+      |  Cache  |                        | (Celery)   |
+      +----+----+                        +-----+------+
+           |                                   |
+   +-------v-----------------------------------v-------+
+   |              PostgreSQL 16+                        |
+   |        Primary (writes) / Replicas (reads)        |
+   +---+------------------+------------------+---------+
+       |                  |                  |
+  +----v------+   +-------v-------+   +-----v--------+
+  | Full Scan |   | File Watcher  |   | Metrics Wkr  |
+  | Workers   |   | (daemon)      |   | (cron)       |
+  +-----------+   +---------------+   +--------------+
+\end{lstlisting}
+
+\section{Service Boundaries}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Service} & \textbf{Responsibility} & \textbf{Scaling} \\
+\midrule
+Query API      & Read-only lookups, search, viz  & Horizontal \\
+Ingestion API  & Accept index/reindex requests   & Horizontal \\
+Admin API      & Cache control, migrations       & Single \\
+Full Scan Wkr  & Complete project indexing        & Celery pool \\
+File Watcher   & Incremental updates on FS events & 1 per project \\
+Metrics Worker & Refresh materialised views       & Cron \\
+Wolfram Svc    & \emph{[Optional]} Math enrichment & Separate \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Data Flows}
+
+\textbf{Read path:} Client $\to$ LB $\to$ Query API $\to$ Redis (L1).
+On miss: PostgreSQL query, cache result, return with freshness metadata.
+
+\textbf{Incremental write:} FS event $\to$ File Watcher (debounce 500\,ms)
+$\to$ hash check $\to$ transactional update (delete old, insert new)
+$\to$ invalidate Redis $\to$ optionally enqueue dependent file checks.
+
+\textbf{Full scan write:} Ingestion API $\to$ Celery task $\to$ five-phase
+pipeline (discover, imports, symbols, dependencies, finalise)
+$\to$ update \texttt{index\_runs}.

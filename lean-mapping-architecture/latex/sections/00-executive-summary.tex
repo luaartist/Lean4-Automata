@@ -1,0 +1,49 @@
+\chapter{Executive Summary}
+
+\section{Purpose}
+The Lean Mapping Architecture provides a production-grade system for indexing,
+querying, and visualising dependency relationships across Lean~4 codebases
+(including Mathlib).  It integrates with Serena as a specialised data layer.
+
+\section{Business Goals}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Goal} & \textbf{Metric} \\
+\midrule
+Index a 10\,K-file Lean project & $<$\,5\,min full scan \\
+Symbol lookup latency (p95) & $<$\,50\,ms \\
+Incremental file update & $<$\,2\,s end-to-end \\
+Transitive dependency query (depth~5) & $<$\,200\,ms \\
+System availability & 99.9\,\% monthly \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Key Decisions}
+\begin{enumerate}
+  \item PostgreSQL~16+ as primary store (JSONB, recursive CTEs, FTS).
+  \item Redis~7+ as ephemeral cache---never the source of truth.
+  \item Three stateless FastAPI services (Query, Ingestion, Admin).
+  \item Next.js~15 frontend with React Flow graph visualisation.
+  \item Wolfram integration is optional and non-core.
+\end{enumerate}
+
+\section{Phased Rollout}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Phase} & \textbf{Weeks} & \textbf{Deliverable} \\
+\midrule
+Foundation       & 1--3   & Schema, full-scan ingestion \\
+Incremental      & 4--5   & File watcher, Redis caching \\
+API Layer        & 6--8   & Query/Search/Viz endpoints \\
+Frontend         & 9--10  & Three-layer exploration UI \\
+Hardening        & 11--12 & Observability, runbooks, load tests \\
+Optional         & Post-MVP & Neo4j export, Wolfram enrichment \\
+\bottomrule
+\end{tabular}
+\end{table}

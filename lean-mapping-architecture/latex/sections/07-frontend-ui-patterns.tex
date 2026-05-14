@@ -1,0 +1,42 @@
+\chapter{Frontend UI Patterns}
+
+\section{Three-Layer Exploration}
+\begin{enumerate}
+  \item \textbf{Project Overview} (\texttt{/projects/\{name\}}):
+        module-level dependency graph + project metrics.
+  \item \textbf{Module Detail} (\texttt{.../modules/\{mod\}}):
+        filterable symbol list + symbol-level graph.
+  \item \textbf{Symbol Detail} (\texttt{.../symbols/\{sym\}}):
+        metadata card, dependency subgraph, code preview.
+\end{enumerate}
+
+\section{Graph Interaction}
+Click: navigate.  Hover: tooltip.  Scroll: zoom.  Drag: pan.
+Ctrl+click: multi-select.  Escape: deselect.
+
+Custom node colours per \texttt{symbol.kind}: theorem (blue \texttt{\#2563eb}),
+def (purple \texttt{\#7c3aed}), axiom (red \texttt{\#dc2626}),
+instance (green \texttt{\#059669}).  All meet WCAG~2.1 AA ($\geq$\,4.5:1).
+
+\section{Accessibility}
+Skip links, ARIA live region for node focus, table alternative for every
+graph, 2\,px focus indicators.  Keyboard: Cmd+K (search), Cmd+B (sidebar),
+arrow keys (graph navigation).
+
+\section{Export}
+Cytoscape JSON, GraphML, SVG---triggered via toolbar buttons.
+
+\section{Performance Budget}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Metric} & \textbf{Target} \\
+\midrule
+Time to Interactive & $<$\,3\,s \\
+LCP & $<$\,2.5\,s \\
+Graph render (1\,000 nodes) & $<$\,1\,s \\
+Bundle (gzipped, initial) & $<$\,250\,KB \\
+\bottomrule
+\end{tabular}
+\end{table}

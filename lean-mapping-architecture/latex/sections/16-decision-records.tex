@@ -1,0 +1,39 @@
+\chapter{Decision Records}
+
+\section{ADR-001: PostgreSQL as Primary Store}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: PostgreSQL~16+ with JSONB, recursive CTEs, and FTS.
+MongoDB rejected (no FK enforcement); Neo4j-only rejected (weak FTS);
+SQLite rejected (concurrent writes).
+
+\section{ADR-002: Redis as Ephemeral Cache}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: Redis~7+ cache-aside, never source of truth.
+Graceful degradation to DB on failure.
+
+\section{ADR-003: Conservative Cache Invalidation}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: On file change, delete file + module symbol +
+dependency caches.  Correctness over hit rate.
+
+\section{ADR-004: SSE for Real-Time Invalidation}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: \texttt{/events/invalidation} SSE stream.
+Frontend invalidates React Query keys on receipt.
+
+\section{ADR-005: JWT Auth for Admin Only}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: HS256 JWT for write endpoints; rate limiting for reads.
+
+\section{ADR-006: Correlation IDs}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: \texttt{X-Request-ID} on every request, in all logs,
+Celery metadata, and responses.
+
+\section{ADR-007: Circuit Breaker for Externals}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: 5-failure threshold, 30\,s open, half-open probe.
+
+\section{ADR-008: Wolfram Optional}
+\textbf{Status}: Accepted. \\
+\textbf{Decision}: Separate container, no critical-path dependency.

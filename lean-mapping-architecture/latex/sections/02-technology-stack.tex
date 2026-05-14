@@ -1,0 +1,48 @@
+\chapter{Technology Stack}
+
+\section{Core Stack}
+
+\begin{longtable}{@{}llll@{}}
+\toprule
+\textbf{Layer} & \textbf{Technology} & \textbf{Version} & \textbf{Rationale} \\
+\midrule
+\endhead
+Primary DB    & PostgreSQL     & 16+    & JSONB, recursive CTEs, FTS, ACID \\
+Cache         & Redis          & 7+     & Sub-ms lookups, TTL, pattern delete \\
+API framework & FastAPI        & 0.110+ & Async, auto-OpenAPI, Pydantic v2 \\
+ASGI server   & Uvicorn        & 0.29+  & High-perf async server \\
+Task queue    & Celery + Redis & 5.3+   & Distributed task processing \\
+File watcher  & watchdog       & 4+     & Cross-platform FS events \\
+Frontend      & Next.js 15     & 15+    & RSC, streaming, SSR \\
+Graph viz     & React Flow     & 11+    & 1000+ node perf, custom nodes \\
+Charts        & Recharts       & 2.12+  & Composable, Tailwind-friendly \\
+State mgmt    & Zustand        & 4+     & Minimal boilerplate \\
+Styling       & Tailwind CSS   & 3.4+   & Utility-first, dark mode \\
+\bottomrule
+\end{longtable}
+
+\section{Key Trade-offs}
+
+\begin{itemize}
+  \item \textbf{PostgreSQL over MongoDB}: referential integrity for dependency
+        graphs outweighs schema flexibility.
+  \item \textbf{Redis as ephemeral cache only}: on total cache loss, the system
+        degrades to DB queries---no data is lost.
+  \item \textbf{Neo4j deferred}: recursive CTEs sufficient for depth~$\leq$\,10;
+        adopt Neo4j only if interactive graph exploration becomes a priority.
+\end{itemize}
+
+\section{Optional Components}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Component} & \textbf{Adoption trigger} \\
+\midrule
+Neo4j Community    & Visual graph exploration priority \\
+Wolfram Engine     & Mathematical verification / LaTeX proofs \\
+Grafana + Loki     & Log aggregation beyond stdout \\
+\bottomrule
+\end{tabular}
+\end{table}

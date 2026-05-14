@@ -1,0 +1,80 @@
+\documentclass[11pt,a4paper]{report}
+
+% ── Packages ──────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!70!black,
+  citecolor=green!50!black,
+}
+
+% ── Code listing style ────────────────────────────────────────────
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!5},
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{green!40!black},
+  stringstyle=\color{red!60!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+}
+
+% ── Header / Footer ──────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Lean Mapping Architecture}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Title ─────────────────────────────────────────────────────────
+\title{%
+  \vspace{-1cm}
+  \textbf{Lean Mapping Architecture}\\[0.4cm]
+  \large Comprehensive Technical Reference\\[0.2cm]
+  \normalsize Serena Integration
+}
+\author{Architecture Team}
+\date{\today}
+
+% ══════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\input{sections/00-executive-summary}
+\input{sections/01-system-architecture}
+\input{sections/02-technology-stack}
+\input{sections/03-api-specification}
+\input{sections/04-data-model}
+\input{sections/05-data-freshness-model}
+\input{sections/06-frontend-architecture}
+\input{sections/07-frontend-ui-patterns}
+\input{sections/08-backend-services}
+\input{sections/09-backend-performance}
+\input{sections/10-security-model}
+\input{sections/11-resilience-patterns}
+\input{sections/12-observability}
+\input{sections/13-deployment}
+\input{sections/14-development-workflow}
+\input{sections/15-operational-runbook}
+\input{sections/16-decision-records}
+\input{sections/17-glossary}
+
+\end{document}

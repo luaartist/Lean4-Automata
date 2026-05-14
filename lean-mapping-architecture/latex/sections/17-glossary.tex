@@ -1,0 +1,32 @@
+\chapter{Glossary}
+
+\begin{longtable}{@{}lp{10cm}@{}}
+\toprule
+\textbf{Term} & \textbf{Definition} \\
+\midrule
+\endhead
+ADR           & Architecture Decision Record. \\
+Cache-aside   & Pattern: check cache before DB; populate on miss. \\
+Celery        & Distributed task queue for Python. \\
+Circuit breaker & Stop calling a failing service after $N$ errors. \\
+Correlation ID & Unique \texttt{X-Request-ID} per logical request. \\
+CTE           & Common Table Expression; \texttt{WITH RECURSIVE} for graph queries. \\
+Dependency (direct) & Explicitly referenced symbol in a definition/proof. \\
+Dependency (implicit) & Resolved via typeclass inference. \\
+Dependency (transitive) & Reachable through a chain of direct/implicit deps. \\
+FTS           & Full-Text Search (PostgreSQL \texttt{tsvector}/\texttt{tsquery}). \\
+GIN index     & Generalised Inverted Index for JSONB and FTS. \\
+Lean~4        & Functional language and interactive theorem prover. \\
+Materialised view & PG view stored on disk, refreshed on demand. \\
+Mathlib       & Community math library for Lean~4 ($\sim$100\,K theorems). \\
+Module        & Lean namespace corresponding to a \texttt{.lean} file. \\
+React Flow    & React library for interactive node-based graphs. \\
+React Query   & Data-fetching and caching for React (TanStack). \\
+RSC           & React Server Components. \\
+SSE           & Server-Sent Events. \\
+Symbol        & Named Lean entity (theorem, def, axiom, instance, \ldots). \\
+TTL           & Time-To-Live for cached entries. \\
+Wolfram       & \emph{[Optional]} Mathematical engine; non-critical path. \\
+Zustand       & Lightweight React state management. \\
+\bottomrule
+\end{longtable}

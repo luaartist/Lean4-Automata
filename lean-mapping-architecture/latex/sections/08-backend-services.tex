@@ -1,0 +1,32 @@
+\chapter{Backend Services}
+
+\section{Service Decomposition}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Service} & \textbf{Port} & \textbf{Role} & \textbf{Data access} \\
+\midrule
+Query API     & 8000 & R/O lookups, search, viz & PG replica + Redis \\
+Ingestion API & 8001 & Index requests, job status & PG + Celery \\
+Admin API     & 8002 & Cache, migrations, health & PG + Redis + queue \\
+Full Scan Wkr & --   & Complete indexing         & PG (writes) \\
+File Watcher  & --   & Incremental updates       & PG + Redis \\
+Metrics Wkr   & --   & Materialised view refresh & PG \\
+Wolfram Svc   & --   & \emph{[Optional]} enrichment & PG metadata \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Full Scan Pipeline}
+Five phases: discover $\to$ import pass $\to$ symbol pass $\to$ dependency
+pass $\to$ finalise.  All within a single PG transaction per batch.
+
+\section{File Watcher}
+Long-running daemon; debounce 500\,ms; SHA-256 hash gate; transactional
+update; cache invalidation; optional dependent notification.
+
+\section{Wolfram Service \emph{[Optional -- Non-Core]}}
+Shells out to \texttt{wolframscript}; stores result in
+\texttt{symbols.metadata} JSONB.  No other service depends on it.

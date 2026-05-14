@@ -1,0 +1,60 @@
+\chapter{API Specification}
+
+All endpoints use the versioned prefix \texttt{/api/v1/}.
+
+\section{Endpoint Catalogue}
+
+\begin{longtable}{@{}llll@{}}
+\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Auth} & \textbf{Description} \\
+\midrule
+\endhead
+GET  & \texttt{/symbols/\{name\}}              & --  & Symbol lookup \\
+GET  & \texttt{/symbols/\{name\}/dependencies}  & --  & Forward deps \\
+GET  & \texttt{/symbols/\{name\}/usages}         & --  & Reverse deps \\
+GET  & \texttt{/search}                          & --  & Full-text search \\
+GET  & \texttt{/files/\{mod\}/imports}           & --  & Module imports \\
+GET  & \texttt{/viz/project/\{name\}/graph}      & --  & Viz export \\
+GET  & \texttt{/charts/symbol-distribution}      & --  & Analytics \\
+POST & \texttt{/admin/index/start}               & JWT & Trigger index \\
+GET  & \texttt{/admin/index/status/\{id\}}       & JWT & Job progress \\
+GET  & \texttt{/health}                          & --  & Readiness \\
+\bottomrule
+\end{longtable}
+
+\section{Response Envelope}
+
+Every successful response includes a \texttt{metadata} block:
+
+\begin{lstlisting}[language={}]
+{
+  "metadata": {
+    "indexed_at": "2025-01-15T10:30:00Z",
+    "cache_hit": false,
+    "freshness": { "max_age_s": 3600, "source": "database" }
+  }
+}
+\end{lstlisting}
+
+Error responses carry a consistent envelope with \texttt{error.code},
+\texttt{error.message}, and \texttt{error.request\_id} (the correlation ID).
+
+\section{Common Status Codes}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Code} & \textbf{Meaning} \\
+\midrule
+200 & Success \\
+202 & Accepted (async job) \\
+400 & Bad request / validation \\
+401 & Missing/invalid JWT \\
+404 & Not found \\
+429 & Rate limited \\
+500 & Internal error \\
+503 & Unavailable (DB down) \\
+\bottomrule
+\end{tabular}
+\end{table}

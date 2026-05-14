@@ -1,0 +1,46 @@
+\chapter{Data Freshness Model}
+
+\section{Design Principle}
+Every API response includes freshness metadata so consumers can assess
+data currency.
+
+\section{Cache-Control Strategy}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Resource} & \textbf{TTL} & \textbf{Invalidation trigger} \\
+\midrule
+Symbol metadata     & 1\,h   & File hash change \\
+Dependency subgraph & 1\,h   & Source/target symbol change \\
+Search results      & 15\,min & Any symbol mutation \\
+Module import graph & 1\,h   & File dependency change \\
+Materialised views  & 1\,h   & Cron refresh \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{HTTP Cache Headers}
+Query API responses include:
+\begin{lstlisting}[language={}]
+Cache-Control: public, max-age=60, stale-while-revalidate=300
+ETag: "sha256:<hash>"
+\end{lstlisting}
+
+\section{SSE Invalidation}
+An optional \texttt{/api/v1/events/invalidation} SSE endpoint streams
+real-time invalidation events. The frontend listens and calls
+\texttt{queryClient.invalidateQueries} on receipt.
+
+\section{Staleness Alerting}
+\begin{itemize}
+  \item \texttt{indexed\_at} $>$ 24\,h: warning badge in UI.
+  \item \texttt{indexed\_at} $>$ 48\,h: Prometheus alert \texttt{index\_stale}.
+  \item Redis unavailable: fallback to DB; log \texttt{cache\_miss\_fallback}.
+\end{itemize}
+
+\section{Consistency Guarantees}
+Serialisable isolation for index writes (strong within transaction).
+Cache reads are eventually consistent (worst-case staleness = TTL).
+SSE reduces effective staleness to sub-second for connected clients.
