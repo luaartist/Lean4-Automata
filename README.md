@@ -89,7 +89,7 @@ queries and bookmark findings without writing SQL.
 
 ### Running standalone (no Docker)
 ```bash
-cd go && go build -o lean4a_forum && ./lean4a_forum --port 8443
+cd go && go run .
 # Open ui/lean4a_forum.html — uses http://localhost:8443 as API_BASE
 ```
 
