@@ -1,0 +1,81 @@
+% =============================================================================
+% Section 5: Python API Routes
+% =============================================================================
+
+\section{Python API Routes}
+\label{sec:api-routes}
+
+Two FastAPI applications expose the database to consumers.
+
+\subsection{Query API (\texttt{:8000})}
+
+Base prefix: \texttt{/api/v1}.  CORS allowed from \texttt{http://localhost:3000}.
+No authentication required.
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Method / Path} & \textbf{Handler} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Method / Path} & \textbf{Handler} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{GET /health/live}
+  & liveness & Returns \texttt{\{"status":"alive"\}} \\
+\texttt{GET /health/ready}
+  & readiness & Checks DB + Redis; returns booleans \\
+\texttt{GET /api/v1/symbols/search}
+  & \texttt{search\_symbols} & Full-text search.  Params: \texttt{q}, \texttt{project\_id}, \texttt{limit} (1--100), \texttt{offset} \\
+\texttt{GET /api/v1/symbols/\{full\_name\}}
+  & \texttt{get\_symbol} & Lookup by qualified name \\
+\texttt{GET /api/v1/dependencies/graph}
+  & \texttt{get\_dep\_graph} & Transitive + reverse deps.  Params: \texttt{full\_name}, \texttt{max\_depth} (1--20) \\
+\texttt{GET /api/v1/modules/metrics}
+  & \texttt{get\_module\_metrics} & Module-level aggregations.  Params: \texttt{project\_id}, \texttt{order\_by} \\
+\texttt{GET /api/v1/events/invalidation}
+  & SSE stream & \texttt{text/event-stream}; publishes cache-invalidation events \\
+\end{longtable}
+
+\paragraph{Cache strategy.}
+Redis cache-aside with 1-hour TTL.  Keys follow the pattern
+\texttt{lean4:cache:\{entity\}:\{params\}}.  Invalidation is broadcast via
+Redis pub/sub channel \texttt{lean4:invalidate}.
+
+\subsection{Ingestion API (\texttt{:8001})}
+
+Base prefix: \texttt{/admin}.  Requires Bearer JWT with \texttt{role:"admin"}.
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Method / Path} & \textbf{Handler} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{POST /health/live}
+  & liveness & Returns \texttt{\{"status":"alive"\}} \\
+\texttt{POST /health/ready}
+  & readiness & DB + Redis check (503 if unhealthy) \\
+\texttt{POST /admin/index/start}
+  & \texttt{start\_index} & Enqueue Celery full-scan.  Body: \texttt{project\_id}, \texttt{root\_dir}.  Returns 202 with \texttt{task\_id} \\
+\texttt{GET /admin/index/status/\{task\_id\}}
+  & \texttt{index\_status} & Poll Celery task state \\
+\end{longtable}
+
+\subsection{Celery Workers}
+
+\begin{longtable}{@{}lp{7cm}@{}}
+\toprule
+\textbf{Task} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{full\_scan\_task}
+  & Parse all \texttt{.lean} files under \texttt{root\_dir}, upsert to DB \\
+\texttt{refresh\_views\_task}
+  & Refresh materialized views (\texttt{dependency\_stats}, \texttt{module\_metrics}).  Scheduled via Celery Beat \\
+\end{longtable}

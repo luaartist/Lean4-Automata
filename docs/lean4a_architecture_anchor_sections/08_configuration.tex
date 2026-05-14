@@ -1,0 +1,128 @@
+% =============================================================================
+% Section 8: Configuration Reference
+% =============================================================================
+
+\section{Configuration Reference}
+\label{sec:configuration}
+
+All configuration is via environment variables, sourced from \texttt{.env}
+(template: \texttt{.env.example}, 38~lines).
+
+\subsection{Application \& Ports}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{APP\_PORT}         & 8000  & Query API listen port \\
+\texttt{INGESTION\_PORT}   & 8001  & Ingestion API listen port \\
+\texttt{NGINX\_HTTP\_PORT} & 8080  & Nginx reverse proxy port \\
+\texttt{FRONTEND\_PORT}    & 3000  & Next.js frontend port \\
+\texttt{FLOWER\_PORT}      & 5555  & Celery Flower monitoring UI \\
+\texttt{LOKI\_PORT}        & 3100  & Loki ingester port \\
+\texttt{GRAFANA\_PORT}     & 3001  & Grafana dashboard port \\
+\end{longtable}
+
+\subsection{Database}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{DATABASE\_URL}       & (none)                   & asyncpg DSN \\
+\texttt{POSTGRES\_DB}        & \texttt{lean4\_automata}  & PostgreSQL database name \\
+\texttt{POSTGRES\_USER}      & \texttt{lean4}            & PostgreSQL user \\
+\texttt{POSTGRES\_PASSWORD}  & \texttt{lean4\_dev\_password} & PostgreSQL password \\
+\texttt{POSTGRES\_PORT}      & 5432                     & PostgreSQL host port \\
+\end{longtable}
+
+\subsection{Redis \& Celery}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{REDIS\_URL}              & \texttt{redis://redis:6379}  & Redis connection URL \\
+\texttt{REDIS\_PORT}             & 6379                         & Redis host port \\
+\texttt{CELERY\_BROKER\_URL}     & \texttt{\$\{REDIS\_URL\}}    & Celery broker \\
+\texttt{CELERY\_RESULT\_BACKEND} & \texttt{\$\{REDIS\_URL\}}    & Celery result backend \\
+\end{longtable}
+
+\subsection{JWT Authentication}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{JWT\_SECRET\_KEY} & \texttt{change-me-in-production} & HS256 signing key \\
+\texttt{JWT\_ALGORITHM}   & \texttt{HS256}                   & JWT algorithm \\
+\end{longtable}
+
+\subsection{Runtime}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{ENV}                       & \texttt{development}                & Deployment environment \\
+\texttt{ALLOWED\_ORIGINS}          & \texttt{http://localhost:3000}      & CORS origins (comma-separated) \\
+\texttt{NEXT\_PUBLIC\_API\_BASE\_URL} & \texttt{http://localhost:8080}   & Frontend API URL \\
+\end{longtable}
+
+\subsection{Parser \& Watcher}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{LEAN\_WATCH\_ROOT} & \texttt{./lean-src} & Root directory for \texttt{.lean} file watching \\
+\texttt{LEAN\_PROJECT\_ID} & \texttt{1}          & Project ID used by watcher indexing \\
+\end{longtable}
+
+\subsection{Go Forum Harness}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{LEAN4A\_FORUM\_DB}      & \texttt{\textasciitilde/.lean4a/forum.db} & SQLite forum DB path \\
+\texttt{LEAN\_DB\_URL}          & \texttt{http://localhost:8000}            & Lean4-Automata API URL \\
+\texttt{TPH\_SERVER\_URL}       & \texttt{http://localhost:5000}            & TPH GPU server URL \\
+\texttt{FLOW\_TIMEOUT\_SEC}     & \texttt{30}                              & Flow execution timeout \\
+\texttt{MAX\_CONCURRENT\_FLOWS} & \texttt{5}                               & Max parallel flows \\
+\end{longtable}
+
+\subsection{Grafana}
+
+\begin{longtable}{@{}llp{5.5cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{GRAFANA\_ADMIN\_USER}       & \texttt{admin} & Grafana admin username \\
+\texttt{GRAFANA\_ADMIN\_PASSWORD}   & \texttt{admin} & Grafana admin password \\
+\texttt{GRAFANA\_ANONYMOUS\_ENABLED}& \texttt{false} & Anonymous access toggle \\
+\end{longtable}

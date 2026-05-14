@@ -1,0 +1,78 @@
+% =============================================================================
+% Section 9: Observability Stack
+% =============================================================================
+
+\section{Observability Stack}
+\label{sec:observability}
+
+The observability stack is \textbf{opt-in}, gated behind a Docker Compose
+profile:
+
+\begin{lstlisting}[language=bash, caption={Enabling the observability stack}]
+docker compose --profile observability up
+\end{lstlisting}
+
+\subsection{Loki (Log Aggregation)}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter}    & \textbf{Value} \\
+\midrule
+Image                 & \texttt{grafana/loki:3.4.2} \\
+Port                  & 3100 \\
+Health check          & \texttt{wget -{}-spider /ready} \\
+Storage backend (dev) & Filesystem (chunks) + in-memory (index) \\
+Log retention (dev)   & $\sim$24 hours \\
+Volume                & \texttt{loki\_data:/loki} \\
+Config                & \texttt{observability/loki/loki-config.yaml} \\
+\bottomrule
+\end{tabular}
+
+\medskip
+
+Loki receives structured JSON logs from all Python and Go services.  In
+production, the storage backend should be switched to an S3-compatible
+object store.
+
+\subsection{Grafana (Dashboards)}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter}    & \textbf{Value} \\
+\midrule
+Image                 & \texttt{grafana/grafana:11.6.0} \\
+Port                  & 3001 \\
+Health check          & \texttt{wget -{}-spider /api/health} \\
+Volume                & \texttt{grafana\_data:/var/lib/grafana} \\
+Default credentials   & \texttt{admin} / \texttt{admin} (override via \texttt{.env}) \\
+Anonymous access      & Disabled \\
+Sign-up               & Disabled \\
+\bottomrule
+\end{tabular}
+
+\paragraph{Auto-provisioned resources.}
+
+\begin{itemize}
+  \item \textbf{Data source:} Loki at \texttt{http://loki:3100}
+        (provisioned via \texttt{observability/grafana/provisioning/}).
+  \item \textbf{Dashboard:} \texttt{logs-overview.json} — log throughput,
+        error rates, per-service breakdown (set as home dashboard).
+\end{itemize}
+
+\subsection{Celery Flower}
+
+Celery Flower (\texttt{mher/flower:2.0}, port~5555) provides a web UI for
+monitoring Celery task queues, worker status, and task results.  It connects
+to Redis via \texttt{CELERY\_BROKER\_URL}.
+
+\subsection{Application-Level Metrics}
+
+The Go forum harness exposes in-memory metrics at \texttt{GET /metrics}:
+
+\begin{itemize}
+  \item Flow execution count (by flow name)
+  \item Flow success/error rate
+  \item Average execution duration
+  \item Active SSE connections
+  \item Ticket creation rate
+\end{itemize}

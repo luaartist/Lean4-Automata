@@ -1,0 +1,219 @@
+% =============================================================================
+% Section 3: Database Schema
+% =============================================================================
+
+\section{Database Schema}
+\label{sec:database-schema}
+
+The PostgreSQL schema is managed by Alembic (async driver \texttt{asyncpg}).
+The migration chain is:
+
+\begin{center}
+\begin{tabular}{@{}clll@{}}
+\toprule
+\textbf{Rev} & \textbf{File} & \textbf{Description} & \textbf{Objects Created} \\
+\midrule
+0001 & \texttt{0001\_initial\_schema.py} & Core tables + enums & 6 tables, 2 enums \\
+0002 & \texttt{0002\_add\_indexes.py}    & B-tree + GIN indexes & 20+ indexes \\
+0003 & \texttt{0003\_materialized\_views.py} & Centrality + module metrics & 2 mat.\ views \\
+0004 & \texttt{0004\_enriched\_metrics.py}  & Phase~2 static-analysis & 15 columns, 3 views \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ── projects ─────────────────────────────────────────────────────────────────
+\subsection{Table: \texttt{projects}}
+
+\begin{longtable}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+id              & \texttt{INTEGER} PK  & Auto-increment \\
+name            & \texttt{VARCHAR(255)} & \texttt{NOT NULL, UNIQUE} \\
+root\_path      & \texttt{TEXT}         & Filesystem root \\
+lean\_version   & \texttt{VARCHAR(50)}  & e.g.\ \texttt{"4.8.0"} \\
+lakefile\_hash  & \texttt{VARCHAR(64)}  & Lake config hash \\
+indexed\_at     & \texttt{TIMESTAMPTZ}  & Default \texttt{now()} \\
+last\_modified  & \texttt{TIMESTAMPTZ}  & Default \texttt{now()} \\
+metadata        & \texttt{JSONB}        & Free-form metadata \\
+\end{longtable}
+
+% ── files ────────────────────────────────────────────────────────────────────
+\subsection{Table: \texttt{files}}
+\label{subsec:files-table}
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+id                      & \texttt{INTEGER} PK       & Auto-increment \\
+project\_id             & \texttt{INTEGER} FK       & \texttt{projects.id}, CASCADE \\
+relative\_path          & \texttt{TEXT}              & Path relative to project root \\
+absolute\_path          & \texttt{TEXT}              & Full filesystem path \\
+module\_name            & \texttt{TEXT}              & Lean module name \\
+file\_hash              & \texttt{VARCHAR(64)}       & SHA-256 (hash gate) \\
+line\_count             & \texttt{INTEGER}           & Number of lines \\
+char\_count             & \texttt{INTEGER}           & Number of characters \\
+indexed\_at             & \texttt{TIMESTAMPTZ}       & Default \texttt{now()} \\
+last\_modified          & \texttt{TIMESTAMPTZ}       & Default \texttt{now()} \\
+imports                 & \texttt{JSONB}             & JSON array of import strings \\
+metadata                & \texttt{JSONB}             & Free-form metadata \\
+\midrule
+\multicolumn{3}{@{}l}{\textit{Phase~2 enriched columns (migration 0004):}} \\
+\midrule
+sorry\_count            & \texttt{INTEGER}           & Default 0. Raw \texttt{sorry} occurrences \\
+admit\_count            & \texttt{INTEGER}           & Default 0. Raw \texttt{admit} occurrences \\
+sorry\_lines            & \texttt{JSONB}             & Default \texttt{[]}. 1-based line numbers \\
+sorry\_in\_proof\_count & \texttt{INTEGER}           & Default 0. Theorems with sorry in body \\
+theorem\_count          & \texttt{INTEGER}           & Default 0. Total theorems + lemmas \\
+proof\_completion       & \texttt{FLOAT}             & Default 1.0. Ratio of complete proofs \\
+native\_decide\_count   & \texttt{INTEGER}           & Default 0. Fragile kernel decisions \\
+debug\_command\_count   & \texttt{INTEGER}           & Default 0. Leftover \texttt{\#check}/\texttt{\#eval} \\
+noncomputable\_count    & \texttt{INTEGER}           & Default 0. \texttt{noncomputable} decls \\
+instance\_count         & \texttt{INTEGER}           & Default 0. Typeclass instances \\
+declared\_axiom\_count  & \texttt{INTEGER}           & Default 0. Custom axiom decls \\
+simp\_attr\_count       & \texttt{INTEGER}           & Default 0. \texttt{@[simp]} tagged lemmas \\
+docstring\_count        & \texttt{INTEGER}           & Default 0. Doc comments present \\
+todo\_count             & \texttt{INTEGER}           & Default 0. TODO/FIXME/HACK/XXX \\
+mathlib\_import\_count  & \texttt{INTEGER}           & Default 0. Imports from \texttt{Mathlib.*} \\
+\end{longtable}
+
+\noindent\textbf{Unique constraint:} \texttt{(project\_id, relative\_path)}.
+
+% ── symbols ──────────────────────────────────────────────────────────────────
+\subsection{Table: \texttt{symbols}}
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+id              & \texttt{INTEGER} PK     & Auto-increment \\
+file\_id        & \texttt{INTEGER} FK     & \texttt{files.id}, CASCADE \\
+project\_id     & \texttt{INTEGER} FK     & \texttt{projects.id}, CASCADE \\
+name            & \texttt{TEXT}            & Short name (\texttt{"append"}) \\
+full\_name      & \texttt{TEXT}            & Qualified name (\texttt{"List.append"}) \\
+kind            & \texttt{symbol\_kind}    & Enum (see below) \\
+line\_start     & \texttt{INTEGER}         & 1-based start line \\
+line\_end       & \texttt{INTEGER}         & Inclusive end line \\
+col\_start      & \texttt{INTEGER}         & 1-based column start \\
+col\_end        & \texttt{INTEGER}         & 1-based column end \\
+signature       & \texttt{TEXT}            & Lean signature text \\
+docstring       & \texttt{TEXT}            & \texttt{/-- ... -/} doc comment \\
+is\_public      & \texttt{BOOLEAN}         & Default \texttt{true} \\
+is\_deprecated  & \texttt{BOOLEAN}         & Default \texttt{false} \\
+indexed\_at     & \texttt{TIMESTAMPTZ}     & Default \texttt{now()} \\
+attributes      & \texttt{JSONB}           & e.g.\ \texttt{["@[simp]"]} \\
+metadata        & \texttt{JSONB}           & Free-form \\
+has\_sorry      & \texttt{BOOLEAN}         & Default \texttt{false} (Phase~2) \\
+\end{longtable}
+
+\noindent\textbf{Unique constraint:} \texttt{(project\_id, full\_name)}.
+
+\noindent\textbf{\texttt{symbol\_kind} enum values:}
+\texttt{theorem}, \texttt{def}, \texttt{axiom}, \texttt{instance},
+\texttt{inductive}, \texttt{structure}, \texttt{class}, \texttt{constant},
+\texttt{opaque}, \texttt{abbrev}.
+
+% ── dependencies ─────────────────────────────────────────────────────────────
+\subsection{Table: \texttt{dependencies}}
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+id                  & \texttt{INTEGER} PK  & Auto-increment \\
+source\_symbol\_id  & \texttt{INTEGER} FK  & \texttt{symbols.id}, CASCADE \\
+target\_symbol\_id  & \texttt{INTEGER} FK  & \texttt{symbols.id}, CASCADE \\
+dependency\_type    & \texttt{dep\_type}    & Enum: \texttt{direct}, \texttt{implicit}, \texttt{import}, \texttt{indirect} \\
+confidence          & \texttt{FLOAT}        & Default 1.0 (0.0--1.0) \\
+indexed\_at         & \texttt{TIMESTAMPTZ}  & Default \texttt{now()} \\
+provenance          & \texttt{TEXT}         & Detection method \\
+metadata            & \texttt{JSONB}        & Free-form \\
+\end{longtable}
+
+% ── file_dependencies ────────────────────────────────────────────────────────
+\subsection{Table: \texttt{file\_dependencies}}
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+id                & \texttt{INTEGER} PK  & Auto-increment \\
+source\_file\_id  & \texttt{INTEGER} FK  & \texttt{files.id}, CASCADE \\
+target\_file\_id  & \texttt{INTEGER} FK  & \texttt{files.id}, CASCADE \\
+is\_direct\_import& \texttt{BOOLEAN}     & Default \texttt{true} \\
+indexed\_at       & \texttt{TIMESTAMPTZ} & Default \texttt{now()} \\
+\end{longtable}
+
+% ── index_runs ───────────────────────────────────────────────────────────────
+\subsection{Table: \texttt{index\_runs}}
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+id                & \texttt{INTEGER} PK    & Auto-increment \\
+project\_id       & \texttt{INTEGER} FK    & \texttt{projects.id}, CASCADE \\
+run\_type         & \texttt{VARCHAR(50)}    & \texttt{"full\_scan"} or \texttt{"incremental"} \\
+started\_at       & \texttt{TIMESTAMPTZ}    & Default \texttt{now()} \\
+completed\_at     & \texttt{TIMESTAMPTZ}    & Nullable \\
+files\_processed  & \texttt{INTEGER}        & Default 0 \\
+symbols\_indexed  & \texttt{INTEGER}        & Default 0 \\
+errors            & \texttt{JSONB}          & Default \texttt{[]} \\
+status            & \texttt{VARCHAR(50)}    & \texttt{"running"}, \texttt{"success"}, \texttt{"failed"} \\
+\end{longtable}
+
+% ── Views ────────────────────────────────────────────────────────────────────
+\subsection{Views (Migration 0004)}
+
+\paragraph{\texttt{v\_proof\_status}} Per-file proof completeness.
+Key columns: \texttt{relative\_path}, \texttt{theorem\_count},
+\texttt{sorry\_in\_proof\_count}, \texttt{proof\_completion},
+\texttt{proof\_status} (derived: \texttt{complete}, \texttt{partial},
+\texttt{mostly\_incomplete}, \texttt{no\_theorems}).
+
+\paragraph{\texttt{v\_floating\_symbols}} Public theorems/defs with zero
+incoming cross-file dependencies---proved but never referenced.
+
+\paragraph{\texttt{v\_file\_interconnect}} File-level fan-in/fan-out,
+\texttt{mathlib\_import\_count}, \texttt{local\_import\_count}, and per-file
+health summary.
+
+\subsection{Materialized Views (Migration 0003)}
+
+\paragraph{\texttt{dependency\_stats}} Per-symbol centrality:
+\texttt{outgoing\_dependencies}, \texttt{incoming\_dependencies},
+\texttt{total\_connections}, \texttt{fan\_out\_ratio}.
+
+\paragraph{\texttt{module\_metrics}} Per-module aggregations: symbol counts by
+kind, \texttt{avg\_symbol\_length\_lines}, \texttt{documentation\_coverage\_pct}.

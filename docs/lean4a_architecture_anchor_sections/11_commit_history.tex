@@ -1,0 +1,44 @@
+% =============================================================================
+% Section 11: Commit History
+% =============================================================================
+
+\section{Commit History}
+\label{sec:commit-history}
+
+The five most recent commits leading to the anchor point:
+
+\begin{longtable}{@{}lp{4.8cm}p{5.5cm}@{}}
+\toprule
+\textbf{SHA} & \textbf{Title} & \textbf{What Changed} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{SHA} & \textbf{Title} & \textbf{What Changed} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{10927ba}
+  & \raggedright refactor: eliminate CommandTemplate code-exec surface---compile-time FlowFunc registry
+  & Removed \texttt{command\_template} field from \texttt{flow\_definitions}; all flows are now compiled Go functions.  Eliminates shell-injection surface entirely. \\
+\addlinespace
+\texttt{4a3c84a}
+  & \raggedright security: audit pass---fix XSS, proxy DoS, JWT leakage, SSE method mismatch
+  & HTML entity escaping in forum UI; proxy response-size cap; JWT secret rotation docs; SSE endpoint enforces GET-only. \\
+\addlinespace
+\texttt{855b7b9}
+  & \raggedright feat: forum-style UI + Go\_Red CLI harness
+  & Added \texttt{go/forum.go}, \texttt{go/forum\_schema.sql}, \texttt{ui/lean4a\_forum.html}, \texttt{ui/flow\_definitions.json}, and \texttt{docs/forum/ARCHITECTURE.md}. \\
+\addlinespace
+\texttt{c40a94a}
+  & \raggedright feat: full stack---ingestion service, parser enrichment, static-analysis metrics
+  & Migration 0004 (enriched metrics), \texttt{FileMetrics} dataclass, ingestion API, 3 new views (\texttt{v\_proof\_status}, \texttt{v\_floating\_symbols}, \texttt{v\_file\_interconnect}). \\
+\addlinespace
+\texttt{07fc8b3}
+  & \raggedright Add optional Grafana Loki log aggregation
+  & \texttt{docker-compose.logging.yml}, \texttt{observability/} directory with Loki config, Grafana provisioning, and dashboards. \\
+\end{longtable}
+
+\noindent Earlier commits established the infrastructure skeleton
+(\texttt{b92878e}), parser + Celery workers (\texttt{07752ca}), query API +
+SSE (\texttt{f9cd528}), and Next.js frontend (\texttt{50bf169}).

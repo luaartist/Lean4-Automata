@@ -1,0 +1,100 @@
+% =============================================================================
+% Section 4: Parser Static-Analysis Signals
+% =============================================================================
+
+\section{Parser Static-Analysis Signals}
+\label{sec:parser-signals}
+
+The regex-based parser (\texttt{parser/lean\_parser.py}) extracts top-level
+declarations without requiring a Lean~4 elaborator.  For each \texttt{.lean}
+file it produces a \texttt{FileMetrics} frozen dataclass whose fields map 1:1
+to columns on the \texttt{files} table (added in migration 0004).
+
+\subsection{\texttt{FileMetrics} Fields}
+
+\begin{longtable}{@{}llp{4.8cm}l@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} & \textbf{SQL Column} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} & \textbf{SQL Column} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\multicolumn{4}{@{}l}{\textit{Proof completeness}} \\
+\midrule
+sorry\_count          & \texttt{int}        & Raw \texttt{sorry} occurrences        & \texttt{sorry\_count} \\
+admit\_count          & \texttt{int}        & Raw \texttt{admit} occurrences        & \texttt{admit\_count} \\
+sorry\_lines          & \texttt{list[int]}  & 1-based line numbers of sorrys        & \texttt{sorry\_lines} \\
+sorry\_in\_proof\_count & \texttt{int}      & Theorems whose body contains sorry    & \texttt{sorry\_in\_proof\_count} \\
+theorem\_count        & \texttt{int}        & Total theorems + lemmas               & \texttt{theorem\_count} \\
+proof\_completion     & \texttt{float}      & $\frac{\text{thm\_count} - \text{sorry\_in\_proof}}{\text{thm\_count}}$ & \texttt{proof\_completion} \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Fragility signals}} \\
+\midrule
+native\_decide\_count & \texttt{int}        & \texttt{native\_decide} (kernel-level, fragile) & \texttt{native\_decide\_count} \\
+debug\_command\_count & \texttt{int}        & Leftover \texttt{\#check}/\texttt{\#eval}/\texttt{\#print} & \texttt{debug\_command\_count} \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Symbol counts}} \\
+\midrule
+noncomputable\_count  & \texttt{int}        & \texttt{noncomputable} declarations   & \texttt{noncomputable\_count} \\
+instance\_count       & \texttt{int}        & Typeclass instances                   & \texttt{instance\_count} \\
+declared\_axiom\_count& \texttt{int}        & Custom \texttt{axiom} declarations    & \texttt{declared\_axiom\_count} \\
+simp\_attr\_count     & \texttt{int}        & \texttt{@[simp]}-tagged lemmas        & \texttt{simp\_attr\_count} \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Documentation / hygiene}} \\
+\midrule
+docstring\_count      & \texttt{int}        & \texttt{/-- ... -/} docstrings        & \texttt{docstring\_count} \\
+todo\_count           & \texttt{int}        & TODO / FIXME / HACK / XXX comments    & \texttt{todo\_count} \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Import profile}} \\
+\midrule
+mathlib\_import\_count& \texttt{int}        & Imports from \texttt{Mathlib.*}       & \texttt{mathlib\_import\_count} \\
+\end{longtable}
+
+\subsection{\texttt{ParsedSymbol} Fields}
+
+Each top-level Lean declaration yields a \texttt{ParsedSymbol}:
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+name             & \texttt{str}  & Short name (e.g.\ \texttt{"append"}) \\
+kind             & \texttt{str}  & Kind keyword (\texttt{def}, \texttt{theorem}, \texttt{lemma}, \ldots) \\
+line\_start      & \texttt{int}  & 1-based line number \\
+namespace\_path  & \texttt{str}  & Namespace context (e.g.\ \texttt{"List"}) \\
+is\_private      & \texttt{bool} & Whether marked \texttt{private} \\
+signature\_text  & \texttt{str}  & Lean signature snippet \\
+mods             & \texttt{str}  & Raw modifier string (e.g.\ \texttt{"@[simp] noncomputable"}) \\
+has\_sorry       & \texttt{bool} & \texttt{sorry}/\texttt{admit} found in declaration body \\
+\end{longtable}
+
+\noindent\textbf{Kind mapping:}
+The parser recognises 11~keywords (\texttt{def}, \texttt{theorem},
+\texttt{lemma}, \texttt{instance}, \texttt{class}, \texttt{structure},
+\texttt{inductive}, \texttt{abbrev}, \texttt{axiom}, \texttt{example},
+\texttt{opaque}).  At the DB layer \texttt{lemma}~$\to$~\texttt{theorem}
+(collapsed) and \texttt{example} is dropped.
+
+\subsection{Parse Pipeline}
+
+\begin{enumerate}
+  \item Strip single-line (\texttt{-{}-}) and block (\texttt{/- \ldots -/})
+        comments, preserving line numbers.
+  \item Extract imports: \lstinline[language=Python]{r"^\s*import\s+([A-Za-z0-9_.]+)\s*$"}
+  \item Track \texttt{namespace}/\texttt{end} blocks for fully-qualified names.
+  \item Match declaration heads via modifier\,+\,kind\,+\,name regex.
+  \item Scan for \texttt{sorry}, \texttt{admit}, \texttt{native\_decide},
+        \texttt{\#check}, \texttt{\#eval}, \texttt{@[simp]}, etc.
+  \item Aggregate into \texttt{FileMetrics}.
+\end{enumerate}
+
+\noindent\textbf{Constraint:} Not a full Lean~4 grammar---regex extraction of
+declaration \emph{heads} only; tactic blocks and elaborator macros are out of
+scope.

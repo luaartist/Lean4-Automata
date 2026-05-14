@@ -1,0 +1,49 @@
+% =============================================================================
+% Section 1: Introduction
+% =============================================================================
+
+\section{Introduction}
+\label{sec:introduction}
+
+\subsection{Purpose}
+
+\textbf{Lean4-Automata} is a full-stack indexing, search, and analysis platform
+for Lean~4 proof libraries.  It continuously parses \texttt{.lean} source files,
+extracts every top-level declaration (theorems, definitions, axioms, instances,
+etc.), computes static-analysis quality signals, and stores the results in a
+PostgreSQL database fronted by dual FastAPI micro-services (read-only query API
+and admin-only ingestion API).  A Next.js~16 frontend and a Go-based
+\emph{forum harness} provide two complementary consumption paths: a rich
+browser UI for human analysts and an SSE-driven flow-execution engine for
+AI agents (TPH, DynamicFlux, Wolfram) that need machine-readable proof-state
+intelligence.
+
+\subsection{Design Goals}
+
+\begin{enumerate}
+  \item \textbf{AI-agent consumption.}  Every endpoint returns structured JSON
+        with pagination, full-text-search ranking, and dependency-graph
+        traversals so that large-language-model agents can reason about proof
+        completeness without re-parsing source files.
+  \item \textbf{Incremental indexing.}  A file-watcher daemon debounces
+        filesystem events, gates on SHA-256 hashes, and upserts only changed
+        files—keeping the index fresh with sub-second latency.
+  \item \textbf{Static proof-quality signals.}  The parser emits 15+
+        \texttt{FileMetrics} fields (\texttt{sorry\_count},
+        \texttt{proof\_completion}, \texttt{native\_decide\_count}, etc.)
+        that enable proof-health dashboards without elaboration-level tooling.
+  \item \textbf{Local-first forum harness.}  The Go forum stores all findings
+        in a local SQLite WAL database (\texttt{\textasciitilde/.lean4a/forum.db}),
+        ensuring that sensitive proof state never leaves the user's machine
+        unless explicitly exported.
+  \item \textbf{Observable infrastructure.}  Docker Compose orchestrates
+        10~services with health checks, rate limiting, and an optional
+        Loki\,+\,Grafana observability stack.
+\end{enumerate}
+
+\subsection{Scope of This Document}
+
+This document is the \emph{architecture anchor} at commit
+\texttt{10927ba}.  It captures every schema column, every HTTP route, every
+environment variable, and the full flow-function registry so that subsequent
+checkpoint documents can be expressed as deltas against this baseline.

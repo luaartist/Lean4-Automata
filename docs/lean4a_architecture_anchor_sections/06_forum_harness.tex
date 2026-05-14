@@ -1,0 +1,122 @@
+% =============================================================================
+% Section 6: Go Forum Harness
+% =============================================================================
+
+\section{Go Forum Harness}
+\label{sec:forum-harness}
+
+The forum harness is a Go HTTP server (\texttt{go/forum.go}, port~8443) that
+extends the existing Go\_Red QMCP consent gate with a flow-execution engine,
+SSE log streaming, ticket storage, and proxy endpoints for the Lean4-Automata
+and TPH APIs.
+
+\subsection{HTTP Routes}
+
+\begin{longtable}{@{}llp{5cm}@{}}
+\toprule
+\textbf{Method / Path} & \textbf{Handler} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Method / Path} & \textbf{Handler} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{GET  /flows}              & \texttt{handleListFlows}    & List all flow definitions \\
+\texttt{POST /flows/\{name\}/start} & \texttt{handleStartFlow}  & Execute a named flow \\
+\texttt{GET  /flows/\{name\}/events}& SSE stream                & Real-time execution logs \\
+\texttt{GET  /tickets/\{id\}}     & \texttt{handleGetTicket}    & Retrieve ticket by ID \\
+\texttt{GET  /tickets}            & \texttt{handleListTickets}  & List recent tickets (paginated) \\
+\texttt{POST /sessions}           & \texttt{handleCreateSession}& Create a new session \\
+\texttt{GET  /sessions}           & \texttt{handleListSessions} & List sessions \\
+\texttt{GET  /sessions/\{id\}}    & \texttt{handleGetSession}   & Session details + tickets \\
+\texttt{POST /lean/query}         & proxy                       & Forward to Lean4-Automata query API \\
+\texttt{POST /tph/inference}      & proxy                       & Forward to TPH GPU server \\
+\texttt{GET  /env/status}         & \texttt{handleEnvStatus}    & Python env + GPU check \\
+\texttt{GET  /health}             & health                      & DB + upstream health \\
+\end{longtable}
+
+\subsection{\texttt{FlowFunc} Registry}
+
+All flows are compiled into the binary---no runtime code execution.  The
+\texttt{CommandTemplate} field (present in early designs) was eliminated in
+commit \texttt{10927ba}.
+
+\begin{lstlisting}[language=Go, caption={FlowFunc type signature}]
+type FlowFunc func(
+    ctx     context.Context,
+    params  map[string]interface{},
+    w       http.ResponseWriter,
+    flusher http.Flusher,
+) (json.RawMessage, string, string)
+\end{lstlisting}
+
+\begin{longtable}{@{}lllp{3.2cm}@{}}
+\toprule
+\textbf{Flow Name} & \textbf{Handler} & \textbf{Type} & \textbf{Endpoint / Notes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Flow Name} & \textbf{Handler} & \textbf{Type} & \textbf{Endpoint / Notes} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{lean\_sorry\_scan}        & \texttt{flowLeanSorryScan}        & builtin & \texttt{/api/v1/} query \\
+\texttt{lean\_float\_scan}        & \texttt{flowLeanFloatScan}        & builtin & \texttt{v\_floating\_symbols} \\
+\texttt{lean\_file\_interconnect} & \texttt{flowLeanFileInterconnect} & builtin & \texttt{v\_file\_interconnect} \\
+\texttt{lean\_db\_health}         & \texttt{flowLeanDBHealth}         & builtin & DB stats query \\
+\texttt{quick\_proof\_report}     & \texttt{flowQuickProofReport}     & builtin & Composite report \\
+\texttt{tph\_inference}           & \texttt{flowTPHInference}         & proxy   & \texttt{:5000/inference} \\
+\texttt{tph\_status}              & \texttt{flowTPHStatus}            & proxy   & \texttt{:5000/status} \\
+\texttt{env\_check}               & \texttt{flowEnvCheck}             & builtin & Python env probe \\
+\texttt{gpu\_check}               & \texttt{flowGPUCheck}             & builtin & ROCm / AMD GPU \\
+\texttt{formula\_match}           & placeholder                      & ---     & \emph{Not implemented} \\
+\texttt{wolfram\_verify}          & placeholder                      & ---     & \emph{Not implemented} \\
+\texttt{lean\_diff\_mathlib}      & placeholder                      & ---     & \emph{Not implemented} \\
+\end{longtable}
+
+\subsection{SQLite Forum Schema}
+
+\textbf{Path:} \texttt{\textasciitilde/.lean4a/forum.db} (WAL mode).
+Four tables:
+
+\begin{description}
+  \item[\texttt{tickets}] (\texttt{id TEXT PK}):
+    Flow results.  Columns: \texttt{flow\_name}, \texttt{input\_json},
+    \texttt{output\_json}, \texttt{status}
+    (\texttt{CHECK IN ('success','error','timeout')}),
+    \texttt{error\_message}, \texttt{created\_at} (unix), \texttt{duration\_ms},
+    \texttt{tags} (JSON array).
+  \item[\texttt{sessions}] (\texttt{id TEXT PK}):
+    Ticket groups.  Columns: \texttt{name}, \texttt{created\_at},
+    \texttt{ticket\_ids\_json}.
+  \item[\texttt{flow\_definitions}] (\texttt{name TEXT PK}):
+    Flow metadata.  Columns: \texttt{description}, \texttt{params\_schema}
+    (JSON schema), \texttt{handler\_type} (\texttt{builtin}/\texttt{proxy}),
+    \texttt{target\_url}, \texttt{enabled}, \texttt{tags}.
+  \item[\texttt{flow\_logs}] (\texttt{id INTEGER PK AUTOINCREMENT}):
+    Circular buffer (trigger caps at 1000~rows).  Columns: \texttt{flow\_name},
+    \texttt{ticket\_id}, \texttt{level}, \texttt{message}, \texttt{timestamp}.
+\end{description}
+
+\subsection{Security Posture}
+
+\begin{enumerate}
+  \item \textbf{No \texttt{CommandTemplate}.}  Commit \texttt{10927ba}
+        eliminated the \texttt{command\_template} field.  All flows are
+        compile-time Go functions---no runtime string interpolation into
+        shell commands.
+  \item \textbf{Method enforcement.}  The router checks HTTP method per
+        endpoint (e.g.\ \texttt{POST} only for \texttt{/flows/\{name\}/start}).
+  \item \textbf{XSS mitigations.}  The single-file HTML UI
+        (\texttt{lean4a\_forum.html}) escapes all dynamic content rendered into
+        the DOM.  JSON payloads are displayed via \texttt{<pre>} with
+        entity-escaped text.
+  \item \textbf{Rate limiting.}  Flow semaphore caps concurrent executions at
+        \texttt{MAX\_CONCURRENT\_FLOWS} (default~5).  SSE connections time out
+        after 5~minutes.
+  \item \textbf{Local-first privacy.}  SQLite lives on the user's filesystem;
+        no data leaves the machine unless the user explicitly exports.
+\end{enumerate}

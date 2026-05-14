@@ -1,0 +1,70 @@
+% =============================================================================
+% Section 2: System Overview
+% =============================================================================
+
+\section{System Overview}
+\label{sec:system-overview}
+
+Figure~\ref{fig:system-layers} shows the six-layer architecture.  Data flows
+bottom-to-top: the \emph{Parser} layer watches the filesystem and feeds
+PostgreSQL; the \emph{API} layer exposes read/write endpoints; the
+\emph{Forum Harness} orchestrates CLI flows via SSE; and the \emph{UI} and
+\emph{TPH/Agent} layers consume the results.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    layer/.style={
+      draw, rounded corners=4pt, minimum width=12cm, minimum height=1.1cm,
+      font=\sffamily\small, text=white, align=center
+    },
+    arrow/.style={-{Stealth[length=5pt]}, thick, gray!70}
+  ]
+
+  % Layers (bottom to top)
+  \node[layer, fill=teal!70!black]     (parser) at (0,0)
+    {\textbf{Parser Layer} — \texttt{lean\_parser.py}, \texttt{scanner.py}, \texttt{watcher.py} (Celery)};
+  \node[layer, fill=blue!60!black]     (db)     at (0,1.6)
+    {\textbf{Database Layer} — PostgreSQL 17, Alembic migrations, materialized views};
+  \node[layer, fill=violet!60!black]   (api)    at (0,3.2)
+    {\textbf{API Layer} — FastAPI Query (:8000) + Ingestion (:8001), Redis cache, Nginx (:8080)};
+  \node[layer, fill=orange!70!black]   (forum)  at (0,4.8)
+    {\textbf{Forum Harness} — Go :8443, FlowFunc registry, SSE streams, SQLite WAL};
+  \node[layer, fill=red!60!black]      (ui)     at (0,6.4)
+    {\textbf{UI Layer} — Next.js 16 (:3000), React 19, TanStack Query, Reactflow};
+  \node[layer, fill=gray!60!black]     (agent)  at (0,8.0)
+    {\textbf{Agent Layer} — TPH GPU (:5000), DynamicFlux, Wolfram Engine, QMCP};
+
+  % Arrows
+  \draw[arrow] (parser.north) -- (db.south);
+  \draw[arrow] (db.north)     -- (api.south);
+  \draw[arrow] (api.north)    -- (forum.south);
+  \draw[arrow] (forum.north)  -- (ui.south);
+  \draw[arrow] (forum.north east) -- ++(0.8,0.6) -- (agent.south east);
+  \draw[arrow] (api.north west)   -- ++(-0.8,0.6) -- (ui.south west);
+
+  % Side annotations
+  \node[font=\scriptsize\sffamily, gray, rotate=90, anchor=south] at (-7.2,4.0)
+    {Data flow $\uparrow$};
+
+\end{tikzpicture}
+\caption{Six-layer architecture of Lean4-Automata at commit \texttt{10927ba}.}
+\label{fig:system-layers}
+\end{figure}
+
+\subsection{Key Technology Choices}
+
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Layer}       & \textbf{Technology}            & \textbf{Rationale} \\
+\midrule
+Parser               & Python 3.11, regex-based       & Fast; no Lean toolchain dependency \\
+Database             & PostgreSQL 17, JSONB, GIN      & Rich indexing, CTE support \\
+Cache                & Redis 7, pub/sub               & Cache-aside + invalidation bus \\
+Query API            & FastAPI + Uvicorn              & Async, OpenAPI, SSE native \\
+Ingestion API        & FastAPI + Celery               & Async task queue for long scans \\
+Forum Harness        & Go 1.21+, SQLite WAL           & Low-latency subprocess control \\
+Frontend             & Next.js 16, React 19           & App Router, SSR, TanStack Query \\
+Observability        & Loki 3.4 + Grafana 11.6        & Structured log aggregation \\
+\bottomrule
+\end{tabular}

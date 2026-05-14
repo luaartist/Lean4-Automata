@@ -1,0 +1,155 @@
+% =============================================================================
+% Lean4-Automata: Technical Architecture Reference
+% Documentation Anchor — Commit 10927ba
+% =============================================================================
+% Compile: pdflatex lean4a_architecture_anchor.tex (run twice for ToC/refs)
+% =============================================================================
+
+\documentclass[11pt, a4paper]{article}
+
+% ── Page geometry ────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+
+% ── Typography ───────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ── Tables ───────────────────────────────────────────────────────────────────
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+
+% ── Graphics & Diagrams ─────────────────────────────────────────────────────
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+% ── Code Listings ────────────────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codebg}{HTML}{F8F8F8}
+\definecolor{codeframe}{HTML}{CCCCCC}
+\definecolor{keyword}{HTML}{0000FF}
+\definecolor{string}{HTML}{A31515}
+\definecolor{comment}{HTML}{008000}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  keywordstyle=\color{keyword}\bfseries,
+  stringstyle=\color{string},
+  commentstyle=\color{comment}\itshape,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=4,
+  captionpos=b,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  xleftmargin=1.5em,
+  aboveskip=1em,
+  belowskip=0.8em,
+}
+
+% Language definitions
+\lstdefinelanguage{Go}{
+  morekeywords={package, import, func, var, type, struct, map, chan, interface,
+                return, if, else, for, range, switch, case, default, break,
+                continue, go, defer, select, const, true, false, nil,
+                string, int, int64, bool, error, float64, byte},
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]`,
+  sensitive=true,
+}
+
+\lstdefinelanguage{SQL}{
+  morekeywords={CREATE, TABLE, IF, NOT, EXISTS, PRIMARY, KEY, TEXT,
+                INTEGER, BOOLEAN, DEFAULT, CHECK, IN, INDEX, ON, DESC,
+                TRIGGER, AFTER, INSERT, WHEN, SELECT, COUNT, FROM, WHERE,
+                BEGIN, DELETE, ORDER, BY, LIMIT, ASC, AUTOINCREMENT,
+                NULL, PRAGMA, END, VIEW, AS, JOIN, LEFT, GROUP, CASE,
+                THEN, ELSE},
+  morecomment=[l]{--},
+  morestring=[b]',
+  sensitive=false,
+}
+
+% ── Hyperlinks ───────────────────────────────────────────────────────────────
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!70!black,
+  citecolor=green!50!black,
+  bookmarks=true,
+  bookmarksnumbered=true,
+  pdfstartview=FitH,
+]{hyperref}
+
+% ── Title info ───────────────────────────────────────────────────────────────
+\title{%
+  \textbf{Lean4-Automata: Technical Architecture Reference}\\[0.5em]
+  \large Documentation Anchor --- Commit \texttt{10927ba}%
+}
+\author{Auto-generated from codebase survey}
+\date{May 2026}
+
+% =============================================================================
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+This document is the \emph{architecture anchor} for the Lean4-Automata project
+at commit \texttt{10927ba} (HEAD of \texttt{main} as of May~2026).  It captures
+every database column, HTTP route, environment variable, Go flow-function, and
+Docker service so that future checkpoint updates can be expressed as deltas
+against this baseline.  The system indexes Lean~4 proof libraries into a
+PostgreSQL database, exposes them via dual FastAPI micro-services, and provides
+a Go-based forum harness for AI-agent consumption of proof-state intelligence.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+% ── Sections (one file each for incremental maintenance) ─────────────────────
+
+\input{lean4a_architecture_anchor_sections/01_introduction}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/02_system_overview}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/03_database_schema}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/04_parser_signals}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/05_api_routes}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/06_forum_harness}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/07_infrastructure}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/08_configuration}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/09_observability}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/10_future_work}
+\clearpage
+
+\input{lean4a_architecture_anchor_sections/11_commit_history}
+
+\end{document}

@@ -1,0 +1,77 @@
+% =============================================================================
+% Section 10: Future Work
+% =============================================================================
+
+\section{Future Work}
+\label{sec:future-work}
+
+The following items are designed but not yet implemented as of commit
+\texttt{10927ba}.
+
+\subsection{Not-Yet-Implemented Flows}
+
+Four flow entries exist in the registry as placeholders returning
+\texttt{\{"status":"not\_implemented"\}}:
+
+\begin{enumerate}
+  \item \textbf{\texttt{formula\_match}} — Match a DynamicFlux Python formula
+        against Lean symbols.  Intended to bridge the numerical Python world
+        with the formal proof world by finding Lean theorems whose signatures
+        structurally correspond to a given formula.
+  \item \textbf{\texttt{wolfram\_verify}} — Verify a mathematical formula via
+        the Wolfram Engine (invoked through the C\# UniversalLLMOrchestrator).
+  \item \textbf{\texttt{lean\_diff\_mathlib}} — Compare local Lean files
+        against upstream Mathlib, identifying declarations that have drifted
+        from or are missing in the canonical library.  Requires
+        \texttt{lake} integration.
+  \item \textbf{\texttt{lean\_mathlib\_diff}} — Deprecated alias for the above;
+        will be removed in a future commit.
+\end{enumerate}
+
+\subsection{CLI Wizard}
+
+A planned interactive command-line wizard (\texttt{lean4a wizard}) that guides
+users through project setup:
+
+\begin{itemize}
+  \item Detect Lean~4 / \texttt{lakefile.lean} presence
+  \item Create project entry in PostgreSQL
+  \item Run initial full-scan indexing
+  \item Display proof-status summary
+\end{itemize}
+
+\subsection{Micro-Agent Harness}
+
+An extension of the forum harness where AI agents (TPH, DynamicFlux) can
+autonomously chain flows:
+
+\begin{itemize}
+  \item \textbf{Flow chaining:} Output of one flow feeds as input to the next
+  \item \textbf{Decision nodes:} Agent inspects intermediate results and
+        branches
+  \item \textbf{QMCP consent gate:} Human-in-the-loop approval before
+        executing destructive or expensive flows
+\end{itemize}
+
+\subsection{Formula-to-Lean Matcher}
+
+A dedicated service that:
+
+\begin{enumerate}
+  \item Parses a Python/DynamicFlux formula AST
+  \item Normalises it into a type-theoretic signature sketch
+  \item Searches the Lean symbol index for structurally compatible theorems
+  \item Returns ranked matches with confidence scores
+\end{enumerate}
+
+\subsection{Additional Planned Enhancements}
+
+\begin{itemize}
+  \item \textbf{Export formats:} PDF, Markdown, and JSON export of ticket
+        collections.
+  \item \textbf{Session collaboration:} Encrypted shareable links for sessions.
+  \item \textbf{AI proof suggestions:} LLM-generated proof-strategy hints
+        based on sorry locations and dependency graphs.
+  \item \textbf{Formula library:} Searchable index of DynamicFlux formulas
+        with Lean correspondence annotations.
+\end{itemize}

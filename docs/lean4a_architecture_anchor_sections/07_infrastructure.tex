@@ -1,0 +1,81 @@
+% =============================================================================
+% Section 7: Infrastructure Services
+% =============================================================================
+
+\section{Infrastructure Services}
+\label{sec:infrastructure}
+
+All services are orchestrated via \texttt{docker-compose.yml} (217~lines).
+The observability stack (Loki + Grafana) is gated behind a Docker Compose
+\texttt{profile}.
+
+\subsection{Service Matrix}
+
+\begin{longtable}{@{}lllll@{}}
+\toprule
+\textbf{Service} & \textbf{Image} & \textbf{Port} & \textbf{Health Check} & \textbf{Depends On} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Service} & \textbf{Image} & \textbf{Port} & \textbf{Health Check} & \textbf{Depends On} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+postgres        & \texttt{postgres:17}             & 5432 & \texttt{pg\_isready}   & --- \\
+redis           & \texttt{redis:7}                 & 6379 & \texttt{redis-cli ping}& --- \\
+nginx           & \texttt{nginx:stable}            & 8080 & \texttt{nginx -t}      & app, app\_ingestion \\
+app             & \texttt{Dockerfile.api}          & 8000 & \texttt{curl /health/ready} & postgres, redis \\
+app\_ingestion  & \texttt{Dockerfile.ingestion}    & 8001 & \texttt{curl /health/ready} & postgres, redis \\
+worker          & \texttt{Dockerfile.worker}       & ---  & ---                    & postgres, redis \\
+watcher         & \texttt{Dockerfile.worker}       & ---  & ---                    & postgres, redis \\
+flower          & \texttt{mher/flower:2.0}         & 5555 & ---                    & redis \\
+web             & \texttt{frontend/Dockerfile}     & 3000 & \texttt{wget :3000/}   & nginx \\
+loki\textsuperscript{$\dagger$}
+                & \texttt{grafana/loki:3.4.2}      & 3100 & \texttt{wget /ready}   & --- \\
+grafana\textsuperscript{$\dagger$}
+                & \texttt{grafana/grafana:11.6.0}  & 3001 & \texttt{wget /api/health} & loki \\
+\end{longtable}
+
+\noindent\textsuperscript{$\dagger$}\,Observability profile only
+(\texttt{docker compose -{}-profile observability up}).
+
+\subsection{Nginx Reverse Proxy}
+
+\textbf{Config:} \texttt{nginx/nginx.conf} (121~lines).\\
+\textbf{Workers:} \texttt{auto} (CPU count), 2048~connections.
+
+\paragraph{Rate limiting zones.}
+\begin{lstlisting}[language=bash, caption={Nginx rate-limit zones}]
+limit_conn_zone $binary_remote_addr zone=sse_conn:10m;
+limit_req_zone  $binary_remote_addr zone=search_req:10m rate=60r/m;
+\end{lstlisting}
+
+\paragraph{Location routing.}
+
+\begin{longtable}{@{}llll@{}}
+\toprule
+\textbf{Location} & \textbf{Upstream} & \textbf{Rate Limit} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\texttt{/api/v1/events/}     & \texttt{app:8000}            & 10 conn/IP    & SSE: buffering off, 1h timeout \\
+\texttt{/api/v1/symbols/search} & \texttt{app:8000}         & 60 req/min +20 burst & Search endpoint \\
+\texttt{/admin/}              & \texttt{app\_ingestion:8001} & ---           & Path rewrite \\
+\texttt{/} (default)          & \texttt{app:8000}            & ---           & All other routes \\
+\end{longtable}
+
+\subsection{Volumes}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Volume} & \textbf{Mount Point} \\
+\midrule
+\texttt{postgres\_data}  & \texttt{/var/lib/postgresql/data} \\
+\texttt{redis\_data}     & \texttt{/data} (AOF persistence) \\
+\texttt{loki\_data}      & \texttt{/loki} \\
+\texttt{grafana\_data}   & \texttt{/var/lib/grafana} \\
+\texttt{LEAN\_WATCH\_ROOT} & \texttt{/lean-src:ro} (bind mount) \\
+\bottomrule
+\end{tabular}
