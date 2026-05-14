@@ -297,7 +297,7 @@ class LeanFileHandler(FileSystemEventHandler):
             conn.commit()
 
         log.info("Watcher: re-indexed %s (%d symbols)", rel, len(parsed.symbols))
-        self._invalidate_cache(rel, [s.full_name for s in parsed.symbols])
+        self._invalidate_cache(rel, [s.full_name for s in parsed.symbols], file_id=file_id)
 
     def _rebuild_symbol_edges(
         self,
@@ -374,13 +374,21 @@ class LeanFileHandler(FileSystemEventHandler):
         rel = self._rel_path(path)
         if not rel:
             return
+        deleted_file_id: int | None = None
         with psycopg.connect(self.db_url, autocommit=True) as conn, conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM files WHERE project_id = %s AND relative_path = %s",
+                """
+                DELETE FROM files
+                 WHERE project_id = %s AND relative_path = %s
+                 RETURNING id
+                """,
                 (self.project_id, rel),
             )
+            row = cur.fetchone()
+            if row is not None:
+                deleted_file_id = int(row[0])
         log.info("Watcher: deleted file row for %s", rel)
-        self._invalidate_cache(rel, [])
+        self._invalidate_cache(rel, [], file_id=deleted_file_id)
 
     # ── Cache invalidation ────────────────────────────────────────────────────
 
@@ -389,7 +397,12 @@ class LeanFileHandler(FileSystemEventHandler):
             self._redis = redis.Redis.from_url(self.redis_url)
         return self._redis
 
-    def _invalidate_cache(self, rel: str, symbol_full_names: list[str]) -> None:
+    def _invalidate_cache(
+        self,
+        rel: str,
+        symbol_full_names: list[str],
+        file_id: int | None = None,
+    ) -> None:
         try:
             r = self._redis_client()
             keys_to_delete: list[bytes] = []
@@ -397,6 +410,27 @@ class LeanFileHandler(FileSystemEventHandler):
             while True:
                 cursor, keys = r.scan(
                     cursor=cursor, match=f"{_CACHE_KEY_PREFIX}file:{rel}*", count=200
+                )
+                keys_to_delete.extend(keys)
+                if cursor == 0:
+                    break
+            if file_id is not None:
+                cursor = 0
+                while True:
+                    cursor, keys = r.scan(
+                        cursor=cursor,
+                        match=f"{_CACHE_KEY_PREFIX}file:{file_id}:*",
+                        count=200,
+                    )
+                    keys_to_delete.extend(keys)
+                    if cursor == 0:
+                        break
+            cursor = 0
+            while True:
+                cursor, keys = r.scan(
+                    cursor=cursor,
+                    match=f"{_CACHE_KEY_PREFIX}deps:*",
+                    count=200,
                 )
                 keys_to_delete.extend(keys)
                 if cursor == 0:
@@ -416,7 +450,7 @@ class LeanFileHandler(FileSystemEventHandler):
                 r.delete(*keys_to_delete)
             r.publish(
                 _INVALIDATE_CHANNEL,
-                json.dumps({"path": rel, "symbols": symbol_full_names}),
+                json.dumps({"path": rel, "file_id": file_id, "symbols": symbol_full_names}),
             )
         except Exception:  # noqa: BLE001
             log.exception("Watcher: redis invalidation failed (non-fatal)")
