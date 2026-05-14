@@ -445,6 +445,344 @@
             margin-bottom: 15px;
             opacity: 0.5;
         }
+
+        /* LLM Chat Panel Styles */
+        .tab-content {
+            padding: 20px;
+        }
+
+        .chat-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 15px;
+            height: calc(100vh - 250px);
+        }
+
+        @media (max-width: 1200px) {
+            .chat-container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+        }
+
+        .chat-panel {
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .chat-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .chat-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .model-selector {
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+            color: #fff;
+            font-size: 0.9em;
+        }
+
+        .context-btn, .clear-chat-btn {
+            padding: 6px 12px;
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid var(--accent-blue);
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+
+        .context-btn:hover, .clear-chat-btn:hover {
+            background: rgba(52, 152, 219, 0.5);
+        }
+
+        .clear-chat-btn {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: var(--error-red);
+        }
+
+        .clear-chat-btn:hover {
+            background: rgba(231, 76, 60, 0.5);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            max-height: 450px;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            display: flex;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-message.user {
+            justify-content: flex-end;
+        }
+
+        .chat-message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+        }
+
+        .chat-message.user .message-bubble {
+            background: rgba(52, 152, 219, 0.4);
+            border: 1px solid var(--accent-blue);
+            color: #fff;
+        }
+
+        .chat-message.assistant .message-bubble {
+            background: rgba(155, 89, 182, 0.3);
+            border: 1px solid var(--accent-purple);
+            color: #fff;
+        }
+
+        .chat-message.error .message-bubble {
+            background: rgba(231, 76, 60, 0.3);
+            border: 1px solid var(--error-red);
+            max-width: 100%;
+        }
+
+        .message-bubble pre {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .message-bubble code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .message-bubble pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.7; }
+            30% { transform: translateY(-10px); opacity: 1; }
+        }
+
+        .chat-input-area {
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .chat-input-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .inject-context-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ccc;
+            font-size: 0.9em;
+        }
+
+        .inject-context-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .send-btn, .stop-btn {
+            padding: 10px 20px;
+            background: rgba(52, 152, 219, 0.4);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .send-btn:hover {
+            background: rgba(52, 152, 219, 0.6);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .stop-btn {
+            background: rgba(231, 76, 60, 0.4);
+            border-color: var(--error-red);
+        }
+
+        .stop-btn:hover {
+            background: rgba(231, 76, 60, 0.6);
+        }
+
+        .context-panel {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .context-panel-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: var(--accent-purple);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .context-content {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .context-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #ccc;
+        }
+
+        .flow-trigger-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: rgba(243, 156, 18, 0.3);
+            border: 1px solid var(--warning-yellow);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+
+        .flow-trigger-btn:hover {
+            background: rgba(243, 156, 18, 0.5);
+        }
+
+        .nav-tabs {
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+        }
+
+        .nav-tabs .nav-link {
+            color: #888;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .nav-tabs .nav-link:hover {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .nav-tabs .nav-link.active {
+            color: var(--accent-blue);
+            background: rgba(52, 152, 219, 0.1);
+            border-bottom-color: var(--accent-blue);
+        }
     </style>
 </head>
 <body>
@@ -493,59 +831,185 @@
         </div>
     </div>
 
-    <div class="main-grid">
-        <!-- Left Sidebar: Flow Buttons -->
-        <div class="card sidebar">
-            <div class="card-title">
-                <i class="fas fa-play-circle"></i>
-                <span>Flows</span>
-            </div>
-            <div id="flow-buttons">
-                <div class="empty-state">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <p>Loading flows...</p>
+    <!-- Bootstrap Nav Tabs -->
+    <ul class="nav nav-tabs" style="padding: 0 20px; background: rgba(255,255,255,0.05);">
+        <li class="nav-item">
+            <button class="nav-link active" id="flows-tab" data-bs-toggle="tab" data-bs-target="#flows-panel" type="button">
+                🔄 Flows
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="tickets-tab" data-bs-toggle="tab" data-bs-target="#tickets-panel" type="button">
+                🎫 Tickets
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="metrics-tab" data-bs-toggle="tab" data-bs-target="#metrics-panel" type="button">
+                📊 Metrics
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="agent-tab" data-bs-toggle="tab" data-bs-target="#agent-panel" type="button">
+                🤖 Debug Agent
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Flows Panel (Original Layout) -->
+        <div class="tab-pane fade show active" id="flows-panel">
+            <div class="main-grid">
+                <!-- Left Sidebar: Flow Buttons -->
+                <div class="card sidebar">
+                    <div class="card-title">
+                        <i class="fas fa-play-circle"></i>
+                        <span>Flows</span>
+                    </div>
+                    <div id="flow-buttons">
+                        <div class="empty-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading flows...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center: Live Log Panel -->
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-terminal"></i>
+                        <span>Live Log</span>
+                        <button class="clear-btn" onclick="clearLog()">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                    <div class="log-panel" id="log-panel">
+                        <div class="empty-state">
+                            <i class="fas fa-terminal"></i>
+                            <p>Select a flow to begin...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Tickets Panel (placeholder in flows view) -->
+                <div class="card tickets-panel">
+                    <div class="card-title">
+                        <i class="fas fa-ticket-alt"></i>
+                        <span>Recent Results</span>
+                    </div>
+                    <div style="text-align: center; padding: 20px; color: #888;">
+                        Switch to Tickets tab to view all results
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Center: Live Log Panel -->
-        <div class="card">
-            <div class="card-title">
-                <i class="fas fa-terminal"></i>
-                <span>Live Log</span>
-                <button class="clear-btn" onclick="clearLog()">
-                    <i class="fas fa-trash"></i> Clear
-                </button>
-            </div>
-            <div class="log-panel" id="log-panel">
-                <div class="empty-state">
-                    <i class="fas fa-terminal"></i>
-                    <p>Select a flow to begin...</p>
+        <!-- Tickets Panel -->
+        <div class="tab-pane fade" id="tickets-panel">
+            <div style="padding: 20px;">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-ticket-alt"></i>
+                        <span>Results</span>
+                        <button class="refresh-btn" onclick="loadTickets()">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <button class="auto-refresh-toggle" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
+                            <i class="fas fa-clock"></i> Auto-refresh
+                        </button>
+                    </div>
+                    <div class="session-selector">
+                        <select id="session-select">
+                            <option value="">All Tickets</option>
+                        </select>
+                    </div>
+                    <div id="tickets-container">
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>No results yet</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Right: Tickets Panel -->
-        <div class="card tickets-panel">
-            <div class="card-title">
-                <i class="fas fa-ticket-alt"></i>
-                <span>Results</span>
-                <button class="refresh-btn" onclick="loadTickets()">
-                    <i class="fas fa-sync"></i>
-                </button>
-                <button class="auto-refresh-toggle" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
-                    <i class="fas fa-clock"></i> Auto-refresh
-                </button>
+        <!-- Metrics Panel (placeholder) -->
+        <div class="tab-pane fade" id="metrics-panel">
+            <div style="padding: 20px;">
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-chart-line"></i>
+                        <span>System Metrics</span>
+                    </div>
+                    <div class="empty-state">
+                        <i class="fas fa-chart-bar"></i>
+                        <p>Metrics dashboard coming soon...</p>
+                    </div>
+                </div>
             </div>
-            <div class="session-selector">
-                <select id="session-select">
-                    <option value="">All Tickets</option>
-                </select>
-            </div>
-            <div id="tickets-container">
-                <div class="empty-state">
-                    <i class="fas fa-inbox"></i>
-                    <p>No results yet</p>
+        </div>
+
+        <!-- Agent Panel (LLM Chat Debug) -->
+        <div class="tab-pane fade" id="agent-panel">
+            <div class="chat-container">
+                <!-- Chat Panel -->
+                <div class="chat-panel">
+                    <div class="chat-header">
+                        <div class="chat-header-left">
+                            <span class="chat-title">🤖 Lean Debug Agent</span>
+                            <select id="model-selector" class="model-selector">
+                                <option value="">Loading models...</option>
+                            </select>
+                        </div>
+                        <div class="chat-controls">
+                            <button class="context-btn" id="context-btn">
+                                <i class="fas fa-cog"></i> Context
+                            </button>
+                            <button class="clear-chat-btn" id="clear-chat-btn">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="empty-state">
+                            <i class="fas fa-comments"></i>
+                            <p>Start a conversation with the debug agent...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area">
+                        <div class="chat-input-controls">
+                            <label class="inject-context-checkbox">
+                                <input type="checkbox" id="inject-context-checkbox" checked>
+                                <span>Inject stack context</span>
+                            </label>
+                        </div>
+                        <div class="chat-input-row">
+                            <textarea 
+                                id="chat-input" 
+                                class="chat-input" 
+                                placeholder="Type your message... (Ctrl+Enter to send, Esc to stop)"
+                                rows="3"
+                            ></textarea>
+                            <button class="send-btn" id="send-btn">
+                                <i class="fas fa-paper-plane"></i> Send
+                            </button>
+                            <button class="stop-btn" id="stop-btn" style="display: none;">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Context Panel -->
+                <div class="context-panel" id="context-panel-container" style="display: none;">
+                    <div class="context-panel-title">
+                        <i class="fas fa-layer-group"></i>
+                        <span>Stack Context</span>
+                    </div>
+                    <div class="context-content" id="context-content">
+                        <pre>Loading context...</pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -572,6 +1036,9 @@
             loadFlows();
             loadTickets();
             setInterval(checkHealth, 30000); // Check health every 30s
+            
+            // Initialize LLM chat panel
+            initLLMChat();
         });
 
         // ====================================================================
@@ -1042,6 +1509,311 @@
                 return '<span class="' + cls + '">' + match + '</span>';
             });
         }
+
+        // ====================================================================
+        // LLM Chat Panel
+        // ====================================================================
+
+        let chatMessages = [];
+        let currentStreamReader = null;
+        let contextRefreshInterval = null;
+
+        function initLLMChat() {
+            // Load models on tab show
+            document.getElementById('agent-tab').addEventListener('shown.bs.tab', () => {
+                loadModels();
+                // Auto-refresh context every 30 seconds if panel is visible
+                if (!contextRefreshInterval && document.getElementById('context-panel-container').style.display !== 'none') {
+                    startContextRefresh();
+                }
+            });
+
+            // Event listeners
+            document.getElementById('send-btn').addEventListener('click', sendMessage);
+            document.getElementById('stop-btn').addEventListener('click', stopGeneration);
+            document.getElementById('clear-chat-btn').addEventListener('click', clearChat);
+            document.getElementById('context-btn').addEventListener('click', toggleContextPanel);
+            
+            // Keyboard shortcuts
+            document.getElementById('chat-input').addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    sendMessage();
+                } else if (e.key === 'Escape') {
+                    stopGeneration();
+                }
+            });
+        }
+
+        async function loadModels() {
+            const selector = document.getElementById('model-selector');
+            try {
+                const resp = await fetch(`${API_BASE}/api/llm/models`);
+                const data = await resp.json();
+                
+                if (data.models && data.models.length > 0) {
+                    selector.innerHTML = data.models.map(model => 
+                        `<option value="${escapeHtml(model)}" ${model === data.default ? 'selected' : ''}>
+                            ${escapeHtml(model)}
+                        </option>`
+                    ).join('');
+                } else {
+                    // Fallback to default models
+                    selector.innerHTML = `
+                        <option value="qwen2.5-coder:32b-instruct" selected>qwen2.5-coder:32b-instruct</option>
+                        <option value="gemma31b-local:latest">gemma31b-local:latest</option>
+                        <option value="deepseek-r1:70b">deepseek-r1:70b</option>
+                        <option value="mistral:latest">mistral:latest</option>
+                    `;
+                }
+            } catch (e) {
+                console.error('Failed to load models:', e);
+                selector.innerHTML = '<option value="qwen2.5-coder:32b-instruct">qwen2.5-coder:32b-instruct (fallback)</option>';
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addChatMessage('user', message);
+            chatMessages.push({ role: 'user', content: message });
+            input.value = '';
+
+            // Show typing indicator
+            const typingIndicator = addTypingIndicator();
+
+            // Disable send button, show stop button
+            document.getElementById('send-btn').style.display = 'none';
+            document.getElementById('stop-btn').style.display = 'block';
+
+            try {
+                const model = document.getElementById('model-selector').value;
+                const injectContext = document.getElementById('inject-context-checkbox').checked;
+
+                const resp = await fetch(`${API_BASE}/api/llm/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: chatMessages,
+                        inject_context: injectContext
+                    })
+                });
+
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                }
+
+                // Remove typing indicator
+                typingIndicator.remove();
+
+                // Start streaming response
+                const reader = resp.body.getReader();
+                currentStreamReader = reader;
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let assistantMessage = '';
+                let assistantBubble = null;
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Parse SSE frames
+                    const frames = buffer.split('\n\n');
+                    buffer = frames.pop();
+
+                    for (const frame of frames) {
+                        let eventType = 'message', dataStr = '';
+                        for (const line of frame.split('\n')) {
+                            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+                            if (line.startsWith('data: ')) dataStr = line.slice(6);
+                        }
+                        if (!dataStr) continue;
+
+                        try {
+                            const data = JSON.parse(dataStr);
+                            
+                            if (eventType === 'token') {
+                                assistantMessage += data.content || '';
+                                if (!assistantBubble) {
+                                    assistantBubble = addChatMessage('assistant', assistantMessage);
+                                } else {
+                                    updateChatMessage(assistantBubble, assistantMessage);
+                                }
+                                scrollChatToBottom();
+                            } else if (eventType === 'done') {
+                                chatMessages.push({ role: 'assistant', content: assistantMessage });
+                                
+                                // Check for flow triggers
+                                checkForFlowTriggers(assistantBubble, assistantMessage);
+                                break;
+                            } else if (eventType === 'error') {
+                                addChatMessage('error', `Error: ${data.message || 'Unknown error'}`);
+                                break;
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse SSE data:', e);
+                        }
+                    }
+                }
+            } catch (e) {
+                typingIndicator.remove();
+                addChatMessage('error', `Failed to send message: ${escapeHtml(e.message)}`);
+            } finally {
+                currentStreamReader = null;
+                document.getElementById('send-btn').style.display = 'block';
+                document.getElementById('stop-btn').style.display = 'none';
+            }
+        }
+
+        function stopGeneration() {
+            if (currentStreamReader) {
+                currentStreamReader.cancel();
+                currentStreamReader = null;
+                addChatMessage('error', 'Generation stopped by user');
+                document.getElementById('send-btn').style.display = 'block';
+                document.getElementById('stop-btn').style.display = 'none';
+            }
+        }
+
+        function addChatMessage(role, content) {
+            const container = document.getElementById('chat-messages');
+            
+            // Remove empty state
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            
+            if (role === 'user' || role === 'error') {
+                bubble.textContent = content;
+            } else if (role === 'assistant') {
+                // Render markdown using marked.js
+                bubble.innerHTML = marked.parse(content);
+            }
+            
+            messageDiv.appendChild(bubble);
+            container.appendChild(messageDiv);
+            scrollChatToBottom();
+            
+            return bubble;
+        }
+
+        function updateChatMessage(bubble, content) {
+            bubble.innerHTML = marked.parse(content);
+        }
+
+        function addTypingIndicator() {
+            const container = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message assistant';
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(messageDiv);
+            scrollChatToBottom();
+            return messageDiv;
+        }
+
+        function scrollChatToBottom() {
+            const container = document.getElementById('chat-messages');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearChat() {
+            chatMessages = [];
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-comments"></i>
+                    <p>Start a conversation with the debug agent...</p>
+                </div>
+            `;
+        }
+
+        function checkForFlowTriggers(bubble, content) {
+            // Parse content for "FLOW: flow_name" pattern
+            const flowMatch = content.match(/FLOW:\s*(\w+)/);
+            if (flowMatch) {
+                const flowName = flowMatch[1];
+                const button = document.createElement('button');
+                button.className = 'flow-trigger-btn';
+                button.innerHTML = `<i class="fas fa-play"></i> Run ${escapeHtml(flowName)}`;
+                button.addEventListener('click', () => {
+                    // Switch to flows tab and run the flow
+                    document.getElementById('flows-tab').click();
+                    setTimeout(() => runFlow(flowName), 100);
+                });
+                bubble.parentElement.appendChild(button);
+            }
+        }
+
+        async function toggleContextPanel() {
+            const panel = document.getElementById('context-panel-container');
+            const btn = document.getElementById('context-btn');
+            
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                btn.innerHTML = '<i class="fas fa-cog fa-spin"></i> Loading...';
+                await loadContext();
+                btn.innerHTML = '<i class="fas fa-cog"></i> Context';
+                startContextRefresh();
+            } else {
+                panel.style.display = 'none';
+                stopContextRefresh();
+            }
+        }
+
+        async function loadContext() {
+            const content = document.getElementById('context-content');
+            try {
+                const resp = await fetch(`${API_BASE}/api/llm/context`);
+                const data = await resp.json();
+                const formatted = JSON.stringify(data, null, 2);
+                const highlighted = syntaxHighlightJson(formatted);
+                content.innerHTML = `<pre>${highlighted}</pre>`;
+            } catch (e) {
+                content.innerHTML = `<pre>Error loading context: ${escapeHtml(e.message)}</pre>`;
+            }
+        }
+
+        function startContextRefresh() {
+            if (contextRefreshInterval) return;
+            contextRefreshInterval = setInterval(() => {
+                if (document.getElementById('context-panel-container').style.display !== 'none') {
+                    loadContext();
+                }
+            }, 30000);
+        }
+
+        function stopContextRefresh() {
+            if (contextRefreshInterval) {
+                clearInterval(contextRefreshInterval);
+                contextRefreshInterval = null;
+            }
+        }
     </script>
+
+    <!-- Marked.js for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

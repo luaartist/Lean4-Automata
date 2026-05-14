@@ -43,3 +43,10 @@ docker-compose.override.yml
 # Local staging / scratch directories
 _copied_from_serena/
 _chopshop/
+
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.toc
