@@ -21,6 +21,19 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# ─── Static-analysis regexes (run post-strip unless noted) ────────────────────
+
+# Run on *scrubbed* text (comments+strings removed): detects live code patterns.
+_SORRY_RE = re.compile(r"\bsorry\b")
+_ADMIT_RE = re.compile(r"\badmit\b")
+_NATIVE_DECIDE_RE = re.compile(r"\bnative_decide\b")
+_DEBUG_CMD_RE = re.compile(r"^\s*#(?:check|eval|print|reduce|assert)\b", re.MULTILINE)
+
+# Run on *original* text (comments preserved): detects annotation patterns.
+_TODO_RE = re.compile(r"--\s*(?:TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
+_DOCSTRING_RE = re.compile(r"/--.*?-/", re.DOTALL)
+_MATHLIB_IMPORT_RE = re.compile(r"^\s*import\s+Mathlib\b", re.MULTILINE)
+
 # ─── Public symbol kinds emitted by the parser ────────────────────────────────
 # (Superset of the database ``symbol_kind`` enum — see ``KIND_TO_DB`` for the
 #  mapping into the canonical enum used in Postgres.)
@@ -95,11 +108,43 @@ class ParsedSymbol:
     namespace_path: str
     is_private: bool
     signature_text: str
+    mods: str = ""        # raw modifier string, e.g. "@[simp] noncomputable"
+    has_sorry: bool = False  # sorry/admit found in this declaration's body span
 
     @property
     def full_name(self) -> str:
         """Fully-qualified name, e.g. ``Foo.Bar.theorem_name``."""
         return f"{self.namespace_path}.{self.name}" if self.namespace_path else self.name
+
+
+@dataclass(slots=True, frozen=True)
+class FileMetrics:
+    """Static quality/health signals extractable without elaboration."""
+
+    # ── Proof completeness ─────────────────────────────────────────────────────
+    sorry_count: int = 0           # raw `sorry` occurrences in code
+    admit_count: int = 0           # raw `admit` occurrences in code
+    sorry_lines: list[int] = field(default_factory=list)  # 1-based line numbers
+    sorry_in_proof_count: int = 0  # theorems/lemmas whose body contains sorry
+    theorem_count: int = 0         # theorems + lemmas
+    proof_completion: float = 1.0  # (theorem_count - sorry_in_proof_count) / theorem_count
+
+    # ── Fragility signals ──────────────────────────────────────────────────────
+    native_decide_count: int = 0   # native_decide (slow, kernel-level, fragile)
+    debug_command_count: int = 0   # leftover #check / #eval / #print in source
+
+    # ── Symbol counts ──────────────────────────────────────────────────────────
+    noncomputable_count: int = 0   # `noncomputable` declarations
+    instance_count: int = 0        # typeclass instances
+    declared_axiom_count: int = 0  # custom `axiom` declarations
+    simp_attr_count: int = 0       # `@[simp]`-tagged lemmas
+
+    # ── Documentation / hygiene ───────────────────────────────────────────────
+    docstring_count: int = 0       # `/-- ... -/` docstrings present
+    todo_count: int = 0            # -- TODO / FIXME / HACK / XXX comments
+
+    # ── Import profile ────────────────────────────────────────────────────────
+    mathlib_import_count: int = 0  # imports from Mathlib.*
 
 
 @dataclass(slots=True, frozen=True)
@@ -109,6 +154,7 @@ class ParsedFileContent:
     imports: list[str] = field(default_factory=list)
     symbols: list[ParsedSymbol] = field(default_factory=list)
     line_count: int = 0
+    metrics: FileMetrics = field(default_factory=FileMetrics)
 
 
 @dataclass(slots=True, frozen=True)
@@ -120,6 +166,7 @@ class ParsedFile:
     symbols: list[ParsedSymbol]
     sha256: str
     line_count: int
+    metrics: FileMetrics
 
 
 # ─── Comment / string scrubbing ───────────────────────────────────────────────
@@ -267,33 +314,48 @@ def parse_text(content: str) -> ParsedFileContent:
 
     imports: list[str] = [m.group(1) for m in _IMPORT_RE.finditer(scrubbed)]
 
-    intervals = _build_namespace_intervals(scrubbed)
-    symbols: list[ParsedSymbol] = []
-    seen: set[tuple[str, int]] = set()  # de-dupe by (full_name, line)
+    # ── Static signals on original (comment-preserving) text ─────────────────
+    todo_count = len(_TODO_RE.findall(content))
+    docstring_count = len(_DOCSTRING_RE.findall(content))
+    mathlib_import_count = len(_MATHLIB_IMPORT_RE.findall(content))
 
-    for m in _DECL_RE.finditer(scrubbed):
+    # ── Static signals on scrubbed (code-only) text ───────────────────────────
+    sorry_matches = list(_SORRY_RE.finditer(scrubbed))
+    sorry_count = len(sorry_matches)
+    sorry_lines = [scrubbed.count("\n", 0, m.start()) + 1 for m in sorry_matches]
+    admit_count = len(_ADMIT_RE.findall(scrubbed))
+    native_decide_count = len(_NATIVE_DECIDE_RE.findall(scrubbed))
+    debug_command_count = len(_DEBUG_CMD_RE.findall(scrubbed))
+
+    # ── Symbol extraction with per-declaration sorry detection ────────────────
+    intervals = _build_namespace_intervals(scrubbed)
+    all_matches = list(_DECL_RE.finditer(scrubbed))
+
+    symbols: list[ParsedSymbol] = []
+    seen: set[tuple[str, int]] = set()
+    simp_attr_count = 0
+    theorem_count = 0
+    sorry_in_proof_count = 0
+
+    for i, m in enumerate(all_matches):
         name = m.group("name")
         if not name:
-            # Anonymous declarations (``example``, anonymous ``instance``)
-            # — synthesise a deterministic name so we don't lose them.
             name = f"_anon_{m.group('kind')}_{m.start()}"
         kind = m.group("kind")
         mods = m.group("mods") or ""
         is_private = "private" in mods
 
-        # Line number (1-indexed) of the declaration head.
+        if "@[simp" in mods:
+            simp_attr_count += 1
+
         line = scrubbed.count("\n", 0, m.start()) + 1
         ns_path = _namespace_for_line(intervals, line)
 
-        # Signature text: from the keyword up to ``:=`` or end of line, whichever
-        # comes first. We slice from the *original* source so the user sees the
-        # real characters (with comments preserved), capped at 4 KiB.
         head_start = m.start()
         slice_end = min(head_start + 4096, len(content))
         chunk = content[head_start:slice_end]
         cut = chunk.find(":=")
         if cut == -1:
-            # Take just the first non-empty line.
             nl = chunk.find("\n")
             cut = nl if nl != -1 else len(chunk)
         signature_text = chunk[:cut].strip()
@@ -303,6 +365,16 @@ def parse_text(content: str) -> ParsedFileContent:
             continue
         seen.add((full, line))
 
+        # Check if sorry appears in this declaration's body span.
+        span_end = all_matches[i + 1].start() if i + 1 < len(all_matches) else len(scrubbed)
+        body = scrubbed[m.start():span_end]
+        has_sorry = bool(_SORRY_RE.search(body)) or bool(_ADMIT_RE.search(body))
+
+        if kind in ("theorem", "lemma"):
+            theorem_count += 1
+            if has_sorry:
+                sorry_in_proof_count += 1
+
         symbols.append(
             ParsedSymbol(
                 name=name,
@@ -311,13 +383,44 @@ def parse_text(content: str) -> ParsedFileContent:
                 namespace_path=ns_path,
                 is_private=is_private,
                 signature_text=signature_text,
+                mods=mods,
+                has_sorry=has_sorry,
             )
         )
+
+    noncomputable_count = sum(1 for s in symbols if "noncomputable" in s.mods)
+    instance_count = sum(1 for s in symbols if s.kind == "instance")
+    declared_axiom_count = sum(1 for s in symbols if s.kind == "axiom")
+
+    proof_completion = (
+        (theorem_count - sorry_in_proof_count) / theorem_count
+        if theorem_count > 0
+        else 1.0
+    )
+
+    metrics = FileMetrics(
+        sorry_count=sorry_count,
+        admit_count=admit_count,
+        sorry_lines=sorry_lines,
+        sorry_in_proof_count=sorry_in_proof_count,
+        theorem_count=theorem_count,
+        proof_completion=proof_completion,
+        native_decide_count=native_decide_count,
+        debug_command_count=debug_command_count,
+        noncomputable_count=noncomputable_count,
+        instance_count=instance_count,
+        declared_axiom_count=declared_axiom_count,
+        simp_attr_count=simp_attr_count,
+        docstring_count=docstring_count,
+        todo_count=todo_count,
+        mathlib_import_count=mathlib_import_count,
+    )
 
     return ParsedFileContent(
         imports=imports,
         symbols=symbols,
         line_count=(0 if not content else content.count("\n") + (0 if content.endswith("\n") else 1)),
+        metrics=metrics,
     )
 
 
@@ -334,6 +437,7 @@ def parse_file(path: str | Path) -> ParsedFile:
         symbols=parsed.symbols,
         sha256=sha,
         line_count=parsed.line_count,
+        metrics=parsed.metrics,
     )
 
 
@@ -341,6 +445,7 @@ __all__ = [
     "PARSER_KINDS",
     "KIND_TO_DB",
     "ParsedSymbol",
+    "FileMetrics",
     "ParsedFile",
     "ParsedFileContent",
     "parse_text",

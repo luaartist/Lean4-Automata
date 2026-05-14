@@ -89,13 +89,6 @@ async def run_async_migrations() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    # For running migrations, we use psycopg2 (synchronous) for stability
-    # Replace asyncpg with psycopg2 for migration execution
-    url = config.get_main_option("sqlalchemy.url")
-    if url and 'postgresql+asyncpg://' in url:
-        url = url.replace('postgresql+asyncpg://', 'postgresql+psycopg2://', 1)
-        config.set_main_option('sqlalchemy.url', url)
-
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

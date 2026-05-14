@@ -33,6 +33,7 @@ import redis
 from psycopg.rows import dict_row
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from parser.lean_parser import (
     KIND_TO_DB,
@@ -191,6 +192,7 @@ class LeanFileHandler(FileSystemEventHandler):
                 return
 
             module = _module_name_for(Path(rel))
+            m = parsed.metrics  # shorthand for metric columns below
 
             # Single transaction: upsert file → replace symbols → rebuild edges.
             with conn.cursor() as cur:
@@ -198,15 +200,42 @@ class LeanFileHandler(FileSystemEventHandler):
                     """
                     INSERT INTO files
                         (project_id, relative_path, absolute_path, module_name,
-                         file_hash, line_count, imports, last_modified)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, now())
+                         file_hash, line_count, imports, last_modified,
+                         sorry_count, admit_count, sorry_lines, sorry_in_proof_count,
+                         theorem_count, proof_completion,
+                         native_decide_count, debug_command_count,
+                         noncomputable_count, instance_count, declared_axiom_count,
+                         simp_attr_count, docstring_count, todo_count,
+                         mathlib_import_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, now(),
+                            %s, %s, %s::jsonb, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s, %s,
+                            %s, %s, %s,
+                            %s)
                     ON CONFLICT (project_id, relative_path) DO UPDATE
                        SET file_hash = EXCLUDED.file_hash,
                            line_count = EXCLUDED.line_count,
                            imports = EXCLUDED.imports,
                            module_name = EXCLUDED.module_name,
                            absolute_path = EXCLUDED.absolute_path,
-                           last_modified = now()
+                           last_modified = now(),
+                           sorry_count = EXCLUDED.sorry_count,
+                           admit_count = EXCLUDED.admit_count,
+                           sorry_lines = EXCLUDED.sorry_lines,
+                           sorry_in_proof_count = EXCLUDED.sorry_in_proof_count,
+                           theorem_count = EXCLUDED.theorem_count,
+                           proof_completion = EXCLUDED.proof_completion,
+                           native_decide_count = EXCLUDED.native_decide_count,
+                           debug_command_count = EXCLUDED.debug_command_count,
+                           noncomputable_count = EXCLUDED.noncomputable_count,
+                           instance_count = EXCLUDED.instance_count,
+                           declared_axiom_count = EXCLUDED.declared_axiom_count,
+                           simp_attr_count = EXCLUDED.simp_attr_count,
+                           docstring_count = EXCLUDED.docstring_count,
+                           todo_count = EXCLUDED.todo_count,
+                           mathlib_import_count = EXCLUDED.mathlib_import_count
                     RETURNING id
                     """,
                     (
@@ -217,6 +246,22 @@ class LeanFileHandler(FileSystemEventHandler):
                         sha,
                         parsed.line_count,
                         json.dumps(parsed.imports),
+                        # metrics
+                        m.sorry_count,
+                        m.admit_count,
+                        json.dumps(m.sorry_lines),
+                        m.sorry_in_proof_count,
+                        m.theorem_count,
+                        m.proof_completion,
+                        m.native_decide_count,
+                        m.debug_command_count,
+                        m.noncomputable_count,
+                        m.instance_count,
+                        m.declared_axiom_count,
+                        m.simp_attr_count,
+                        m.docstring_count,
+                        m.todo_count,
+                        m.mathlib_import_count,
                     ),
                 )
                 file_row = cur.fetchone()
@@ -231,15 +276,16 @@ class LeanFileHandler(FileSystemEventHandler):
                         """
                         INSERT INTO symbols
                             (project_id, file_id, name, full_name, kind,
-                             line_start, line_end, signature, is_public)
-                        VALUES (%s, %s, %s, %s, %s::symbol_kind, %s, %s, %s, %s)
+                             line_start, line_end, signature, is_public, has_sorry)
+                        VALUES (%s, %s, %s, %s, %s::symbol_kind, %s, %s, %s, %s, %s)
                         ON CONFLICT (project_id, full_name) DO UPDATE
                            SET file_id = EXCLUDED.file_id,
                                kind = EXCLUDED.kind,
                                line_start = EXCLUDED.line_start,
                                line_end = EXCLUDED.line_end,
                                signature = EXCLUDED.signature,
-                               is_public = EXCLUDED.is_public
+                               is_public = EXCLUDED.is_public,
+                               has_sorry = EXCLUDED.has_sorry
                         """,
                         rows,
                     )
@@ -479,6 +525,7 @@ def _symbol_rows(project_id: int, file_id: int, symbols: list[ParsedSymbol]):
             s.line_start,
             s.signature_text[:8000] if s.signature_text else None,
             not s.is_private,
+            s.has_sorry,
         )
 
 
@@ -522,9 +569,17 @@ def main() -> None:
         db_url=settings.DATABASE_URL,
         redis_url=settings.REDIS_URL,
     )
-    observer = Observer()
-    observer.schedule(handler, str(watch_root), recursive=True)
-    observer.start()
+    try:
+        observer: Observer | PollingObserver = Observer()
+        observer.schedule(handler, str(watch_root), recursive=True)
+        observer.start()
+        log.info("Watcher: using inotify observer")
+    except OSError as exc:
+        log.warning("Watcher: inotify unavailable (%s) — falling back to polling observer", exc)
+        observer = PollingObserver(timeout=2)
+        observer.schedule(handler, str(watch_root), recursive=True)
+        observer.start()
+        log.info("Watcher: using polling observer (2s interval)")
 
     stop_event = threading.Event()
 

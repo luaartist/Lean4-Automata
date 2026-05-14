@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
 
     # ── Redis ─────────────────────────────────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = "redis://redis:6379"
 
     # ── JWT ───────────────────────────────────────────────────────────────────
     JWT_SECRET_KEY: str = "change-me-in-production"

@@ -22,31 +22,6 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Create enum types and core tables."""
     
-    # Create enum types
-    op.execute(text("""
-        CREATE TYPE symbol_kind AS ENUM (
-            'theorem',
-            'def',
-            'axiom',
-            'instance',
-            'inductive',
-            'structure',
-            'class',
-            'constant',
-            'opaque',
-            'abbrev'
-        )
-    """))
-    
-    op.execute(text("""
-        CREATE TYPE dependency_type AS ENUM (
-            'direct',
-            'implicit',
-            'import',
-            'indirect'
-        )
-    """))
-    
     # Create projects table
     op.create_table(
         'projects',

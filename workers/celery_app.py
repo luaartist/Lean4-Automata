@@ -27,5 +27,11 @@ celery_app.conf.update(
     result_expires=86400,        # 24h
 )
 
+celery_app.conf.beat_schedule = {
+    "refresh-materialized-views-hourly": {
+        "task": "lean4.refresh_materialized_views",
+        "schedule": 3600.0,  # every hour
+    },
+}
 
 __all__ = ["celery_app"]
