@@ -42,3 +42,4 @@ docker-compose.override.yml
 
 # Local staging / scratch directories
 _copied_from_serena/
+_chopshop/

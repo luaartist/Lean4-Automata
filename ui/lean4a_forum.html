@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lean4-Automata Forum — CLI Research Harness</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-darker: #16213e;
+            --accent-blue: #3498db;
+            --accent-purple: #9b59b6;
+            --success-green: #27ae60;
+            --error-red: #e74c3c;
+            --warning-yellow: #f39c12;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            background: linear-gradient(45deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2em;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .status-badges {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .badge-status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .badge-status.online {
+            border-color: var(--success-green);
+            color: var(--success-green);
+        }
+
+        .badge-status.offline {
+            border-color: var(--error-red);
+            color: var(--error-red);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 250px 1fr 350px;
+            gap: 20px;
+            padding: 0 20px 20px;
+            height: calc(100vh - 180px);
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .sidebar, .tickets-panel {
+                max-height: 400px;
+            }
+        }
+
+        .card {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            overflow-y: auto;
+        }
+
+        .card-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Flow Buttons Sidebar */
+        .flow-btn {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: rgba(52, 152, 219, 0.2);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9em;
+        }
+
+        .flow-btn:hover {
+            background: rgba(52, 152, 219, 0.4);
+            transform: translateX(5px);
+        }
+
+        .flow-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .flow-btn.running {
+            background: rgba(155, 89, 182, 0.3);
+            border-color: var(--accent-purple);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Live Log Panel */
+        .log-panel {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 15px;
+            height: 100%;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px 10px;
+            border-left: 3px solid transparent;
+            word-wrap: break-word;
+        }
+
+        .log-entry.info {
+            border-color: var(--accent-blue);
+            color: #aaf;
+        }
+
+        .log-entry.stdout {
+            border-color: var(--success-green);
+            color: #afa;
+        }
+
+        .log-entry.stderr {
+            border-color: var(--error-red);
+            color: #faa;
+        }
+
+        .log-entry.error {
+            border-color: var(--error-red);
+            background: rgba(231, 76, 60, 0.1);
+            color: #faa;
+        }
+
+        /* Tickets Panel */
+        .ticket-item {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .ticket-item:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: var(--accent-blue);
+        }
+
+        .ticket-item.expanded {
+            background: rgba(52, 152, 219, 0.15);
+        }
+
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .ticket-flow-name {
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .ticket-status {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+        }
+
+        .ticket-status.success {
+            background: var(--success-green);
+            color: #000;
+        }
+
+        .ticket-status.error {
+            background: var(--error-red);
+            color: #fff;
+        }
+
+        .ticket-status.timeout {
+            background: var(--warning-yellow);
+            color: #000;
+        }
+
+        .ticket-meta {
+            font-size: 0.85em;
+            color: #888;
+        }
+
+        .ticket-content {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .ticket-content.show {
+            display: block;
+        }
+
+        .ticket-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.8em;
+            color: #ccc;
+        }
+
+        .session-selector {
+            margin-bottom: 15px;
+        }
+
+        .session-selector select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+            color: #fff;
+        }
+
+        .clear-btn {
+            padding: 8px 16px;
+            background: rgba(231, 76, 60, 0.3);
+            border: 1px solid var(--error-red);
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+
+        .clear-btn:hover {
+            background: rgba(231, 76, 60, 0.5);
+        }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            background: rgba(52, 152, 219, 0.3);
+            border: 1px solid var(--accent-blue);
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+            margin-left: 10px;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(52, 152, 219, 0.5);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3em;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><i class="fas fa-code-branch"></i> Lean4-Automata Forum</h1>
+        <div class="status-badges">
+            <div class="badge-status" id="badge-python">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <span>Python: Checking...</span>
+            </div>
+            <div class="badge-status" id="badge-lean">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <span>Lean DB: Checking...</span>
+            </div>
+            <div class="badge-status" id="badge-tph">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <span>TPH GPU: Checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-grid">
+        <!-- Left Sidebar: Flow Buttons -->
+        <div class="card sidebar">
+            <div class="card-title">
+                <i class="fas fa-play-circle"></i>
+                <span>Flows</span>
+            </div>
+            <div id="flow-buttons">
+                <div class="empty-state">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading flows...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Live Log Panel -->
+        <div class="card">
+            <div class="card-title">
+                <i class="fas fa-terminal"></i>
+                <span>Live Log</span>
+                <button class="clear-btn" onclick="clearLog()">
+                    <i class="fas fa-trash"></i> Clear
+                </button>
+            </div>
+            <div class="log-panel" id="log-panel">
+                <div class="empty-state">
+                    <i class="fas fa-terminal"></i>
+                    <p>Select a flow to begin...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Tickets Panel -->
+        <div class="card tickets-panel">
+            <div class="card-title">
+                <i class="fas fa-ticket-alt"></i>
+                <span>Results</span>
+                <button class="refresh-btn" onclick="loadTickets()">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div class="session-selector">
+                <select id="session-select">
+                    <option value="">All Tickets</option>
+                </select>
+            </div>
+            <div id="tickets-container">
+                <div class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <p>No results yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let activeFlow = null;
+        let eventSource = null;
+
+        // ====================================================================
+        // Initialization
+        // ====================================================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            checkHealth();
+            loadFlows();
+            loadTickets();
+            setInterval(checkHealth, 30000); // Check health every 30s
+        });
+
+        // ====================================================================
+        // Health Checks
+        // ====================================================================
+
+        async function checkHealth() {
+            try {
+                // Python env
+                const envResp = await fetch(`${API_BASE}/env/status`);
+                const envData = await envResp.json();
+                updateBadge('badge-python', envData.venv_active, 
+                    `Python: ${envData.python_version || 'Unknown'}`);
+
+                // Lean DB
+                const leanResp = await fetch(`${API_BASE}/health`);
+                const leanData = await leanResp.json();
+                updateBadge('badge-lean', leanData.checks.lean_db === 'ok', 
+                    `Lean DB: ${leanData.checks.lean_db}`);
+
+                // TPH GPU
+                updateBadge('badge-tph', leanData.checks.tph_server === 'ok', 
+                    `TPH GPU: ${leanData.checks.tph_server}`);
+            } catch (e) {
+                console.error('Health check failed:', e);
+            }
+        }
+
+        function updateBadge(id, online, text) {
+            const badge = document.getElementById(id);
+            badge.className = `badge-status ${online ? 'online' : 'offline'}`;
+            badge.innerHTML = `
+                <i class="fas fa-${online ? 'check-circle' : 'times-circle'}"></i>
+                <span>${text}</span>
+            `;
+        }
+
+        // ====================================================================
+        // Flow Management
+        // ====================================================================
+
+        async function loadFlows() {
+            try {
+                const resp = await fetch(`${API_BASE}/flows`);
+                const data = await resp.json();
+                renderFlows(data.flows || []);
+            } catch (e) {
+                console.error('Failed to load flows:', e);
+                document.getElementById('flow-buttons').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Failed to load flows</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderFlows(flows) {
+            const container = document.getElementById('flow-buttons');
+            if (flows.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <p>No flows available</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = flows.map(flow => {
+                const icon = getFlowIcon(flow.name);
+                return `
+                    <button class="flow-btn" onclick="runFlow('${flow.name}')" id="flow-${flow.name}">
+                        <i class="fas fa-${icon}"></i>
+                        <span>${flow.description}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function getFlowIcon(flowName) {
+            const icons = {
+                'lean_sorry_scan': 'search',
+                'lean_float_scan': 'ghost',
+                'lean_diff_mathlib': 'code-branch',
+                'tph_inference': 'brain',
+                'env_check': 'check-circle',
+                'formula_match': 'calculator',
+                'wolfram_verify': 'flask'
+            };
+            return icons[flowName] || 'cog';
+        }
+
+        async function runFlow(flowName) {
+            if (activeFlow) {
+                logMessage('error', 'Another flow is already running. Please wait...');
+                return;
+            }
+
+            activeFlow = flowName;
+            const btn = document.getElementById(`flow-${flowName}`);
+            btn.classList.add('running');
+            btn.disabled = true;
+
+            clearLog();
+            logMessage('info', `▶ Starting flow: ${flowName}`);
+
+            try {
+                eventSource = new EventSource(`${API_BASE}/run/flow/${flowName}`);
+
+                eventSource.addEventListener('log', (e) => {
+                    const data = JSON.parse(e.data);
+                    logMessage(data.level, data.message);
+                });
+
+                eventSource.addEventListener('result', (e) => {
+                    const data = JSON.parse(e.data);
+                    logMessage('info', `✅ Flow completed. Ticket ID: ${data.ticket_id}`);
+                    loadTickets();
+                });
+
+                eventSource.addEventListener('done', (e) => {
+                    const data = JSON.parse(e.data);
+                    logMessage('info', `⏱ Duration: ${data.duration_ms}ms`);
+                    stopFlow(flowName);
+                });
+
+                eventSource.onerror = (e) => {
+                    logMessage('error', '❌ Connection error or flow failed');
+                    stopFlow(flowName);
+                };
+
+            } catch (e) {
+                logMessage('error', `Failed to start flow: ${e.message}`);
+                stopFlow(flowName);
+            }
+        }
+
+        function stopFlow(flowName) {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            const btn = document.getElementById(`flow-${flowName}`);
+            if (btn) {
+                btn.classList.remove('running');
+                btn.disabled = false;
+            }
+
+            activeFlow = null;
+        }
+
+        // ====================================================================
+        // Log Panel
+        // ====================================================================
+
+        function logMessage(level, message) {
+            const panel = document.getElementById('log-panel');
+            
+            // Remove empty state if present
+            const emptyState = panel.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${level}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            panel.appendChild(entry);
+
+            // Auto-scroll to bottom
+            panel.scrollTop = panel.scrollHeight;
+        }
+
+        function clearLog() {
+            const panel = document.getElementById('log-panel');
+            panel.innerHTML = '';
+        }
+
+        // ====================================================================
+        // Tickets Panel
+        // ====================================================================
+
+        async function loadTickets() {
+            try {
+                const resp = await fetch(`${API_BASE}/tickets?limit=50`);
+                const data = await resp.json();
+                renderTickets(data.tickets || []);
+            } catch (e) {
+                console.error('Failed to load tickets:', e);
+            }
+        }
+
+        function renderTickets(tickets) {
+            const container = document.getElementById('tickets-container');
+            
+            if (tickets.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>No results yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = tickets.map(ticket => `
+                <div class="ticket-item" onclick="toggleTicket('${ticket.id}')">
+                    <div class="ticket-header">
+                        <div class="ticket-flow-name">${ticket.flow_name}</div>
+                        <div class="ticket-status ${ticket.status}">${ticket.status}</div>
+                    </div>
+                    <div class="ticket-meta">
+                        ID: ${ticket.id.substring(0, 12)}...
+                        <br>
+                        ${new Date(ticket.created_at * 1000).toLocaleString()}
+                    </div>
+                    <div class="ticket-content" id="ticket-content-${ticket.id}">
+                        <div class="spinner"></div> Loading...
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function toggleTicket(ticketId) {
+            const ticketItem = event.currentTarget;
+            const content = document.getElementById(`ticket-content-${ticketId}`);
+
+            if (content.classList.contains('show')) {
+                content.classList.remove('show');
+                ticketItem.classList.remove('expanded');
+            } else {
+                // Load full ticket data
+                try {
+                    const resp = await fetch(`${API_BASE}/ticket/${ticketId}`);
+                    const ticket = await resp.json();
+                    
+                    const outputJson = JSON.stringify(JSON.parse(ticket.output_json), null, 2);
+                    content.innerHTML = `<pre>${outputJson}</pre>`;
+                    content.classList.add('show');
+                    ticketItem.classList.add('expanded');
+                } catch (e) {
+                    content.innerHTML = `<pre>Error loading ticket: ${e.message}</pre>`;
+                    content.classList.add('show');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
