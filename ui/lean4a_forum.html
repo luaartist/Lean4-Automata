@@ -1437,7 +1437,7 @@
                 const safeFlowName = escapeHtml(ticket.flow_name);
                 const safeStatus   = escapeHtml(ticket.status);
                 return `
-                    <div class="ticket-item ${isNew ? 'new-flash' : ''}" onclick="toggleTicket('${safeId}')">
+                    <div class="ticket-item ${isNew ? 'new-flash' : ''}" onclick="toggleTicket('${safeId}', this)">
                         <div class="ticket-header">
                             <div class="ticket-flow-name">${safeFlowName}</div>
                             <div class="ticket-status ${safeStatus}">${safeStatus}</div>
@@ -1455,8 +1455,7 @@
             }).join('');
         }
 
-        async function toggleTicket(ticketId) {
-            const ticketItem = event.currentTarget;
+        async function toggleTicket(ticketId, ticketItem) {
             const content = document.getElementById(`ticket-content-${ticketId}`);
 
             if (content.classList.contains('show')) {
