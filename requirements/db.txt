@@ -1,0 +1,18 @@
+# Database dependencies for Lean4-Automata project
+# PostgreSQL 18.4 with async support
+
+# Alembic - Database migration tool
+alembic>=1.18.4
+
+# AsyncPG - High-performance async PostgreSQL driver (Python 3.12+)
+asyncpg>=0.30.0
+
+# SQLAlchemy - SQL toolkit and ORM
+sqlalchemy>=2.0.41
+
+# Psycopg2 - PostgreSQL adapter for synchronous Alembic operations
+# Alternative: psycopg[binary]>=3.2 for psycopg3 (preferred for new projects)
+psycopg2-binary>=2.9.9
+
+# Python-dotenv - Environment variable management
+python-dotenv>=1.2.2
