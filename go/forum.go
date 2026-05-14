@@ -86,13 +86,13 @@ type Session struct {
 }
 
 type FlowDefinition struct {
-	Name            string          `json:"name"`
-	Description     string          `json:"description"`
-	ParamsSchema    json.RawMessage `json:"params_schema"`
-	HandlerType     string          `json:"handler_type"` // subprocess, proxy
-	CommandTemplate string          `json:"command_template"`
-	Enabled         bool            `json:"enabled"`
-	Tags            []string        `json:"tags"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	ParamsSchema json.RawMessage `json:"params_schema"`
+	HandlerType  string          `json:"handler_type"` // builtin, proxy
+	TargetURL    string          `json:"target_url,omitempty"`
+	Enabled      bool            `json:"enabled"`
+	Tags         []string        `json:"tags"`
 }
 
 type FlowInput struct {
@@ -116,6 +116,28 @@ type ResultMessage struct {
 
 type DoneMessage struct {
 	DurationMS int64 `json:"duration_ms"`
+}
+
+// ============================================================================
+// Flow Function Registry
+// ============================================================================
+
+// FlowFunc is the signature for all built-in flow implementations
+type FlowFunc func(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string)
+
+var flowRegistry = map[string]FlowFunc{
+	"lean_sorry_scan":        flowLeanSorryScan,
+	"lean_float_scan":        flowLeanFloatScan,
+	"lean_file_interconnect": flowLeanFileInterconnect,
+	"lean_db_health":         flowLeanDBHealth,
+	"quick_proof_report":     flowQuickProofReport,
+	"tph_status":             flowTPHStatus,
+	"env_check":              flowEnvCheck,
+	"gpu_check":              flowGPUCheck,
+	"formula_match":          flowNotImplemented("formula_match"),
+	"wolfram_verify":         flowNotImplemented("wolfram_verify"),
+	"lean_diff_mathlib":      flowNotImplemented("lean_diff_mathlib"),
+	"lean_mathlib_diff":      flowNotImplemented("lean_mathlib_diff"),
 }
 
 // ============================================================================
@@ -168,7 +190,7 @@ func initForumDB() error {
 		description TEXT NOT NULL,
 		params_schema TEXT NOT NULL,
 		handler_type TEXT NOT NULL,
-		command_template TEXT,
+		target_url TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		tags TEXT
 	);
@@ -203,251 +225,108 @@ func initForumDB() error {
 }
 
 func seedFlowDefinitions(db *sql.DB) error {
-	// SECURITY FIX: Updated to include all 12 flows from ui/flow_definitions.json
+	// SECURITY FIX: Removed CommandTemplate field — all flows are now compile-time Go functions
 	flows := []FlowDefinition{
 		{
-			Name:        "lean_sorry_scan",
-			Description: "Scan Lean4 codebase for sorry statements",
+			Name:         "lean_sorry_scan",
+			Description:  "Scan Lean4 codebase for sorry statements",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_pattern":{"type":"string","description":"File pattern to match (e.g., *.lean)","default":"*.lean"}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-try:
-    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT file_path, sorry_count, total_declarations FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC'})
-    result = resp.json()
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'error': str(e)}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"lean", "sorry", "proof-status"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"lean", "sorry", "proof-status"},
 		},
 		{
-			Name:        "lean_float_scan",
-			Description: "Query floating symbols (definitions without proofs)",
+			Name:         "lean_float_scan",
+			Description:  "Query floating symbols (definitions without proofs)",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum number of results","default":100}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-try:
-    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT symbol_name, file_path, definition_type FROM v_floating_symbols ORDER BY symbol_name LIMIT 100'})
-    result = resp.json()
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'error': str(e)}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"lean", "floating", "symbols"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"lean", "floating", "symbols"},
 		},
 		{
-			Name:        "lean_file_interconnect",
-			Description: "Analyze file dependencies and imports",
+			Name:         "lean_file_interconnect",
+			Description:  "Analyze file dependencies and imports",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string","description":"Specific file to analyze (optional)","default":""}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-try:
-    resp = requests.get('http://localhost:8000/query', json={'query': 'SELECT file_path, import_count, exported_symbols FROM v_file_interconnect ORDER BY import_count DESC LIMIT 50'})
-    result = resp.json()
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'error': str(e)}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"lean", "dependencies", "imports"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"lean", "dependencies", "imports"},
 		},
 		{
-			Name:        "lean_diff_mathlib",
-			Description: "Compare local Lean files against mathlib (placeholder)",
+			Name:         "lean_diff_mathlib",
+			Description:  "Compare local Lean files against mathlib (placeholder)",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"branch":{"type":"string","description":"Git branch to compare","default":"main"}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `echo '{"status": "not_implemented", "message": "Mathlib diff requires lake integration. Future enhancement: compare local symbols against mathlib4 master branch.", "placeholder": true}'`,
-			Enabled: false,
-			Tags:    []string{"lean", "mathlib", "diff", "placeholder"},
+			HandlerType:  "builtin",
+			Enabled:      false,
+			Tags:         []string{"lean", "mathlib", "diff", "placeholder"},
 		},
 		{
 			Name:         "tph_inference",
 			Description:  "Run token inference through TPH model on MI300X GPU",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"tokens":{"type":"array","description":"Token IDs to process","items":{"type":"integer"},"default":[42,17,89]},"max_length":{"type":"integer","description":"Maximum sequence length","default":50}}}`),
 			HandlerType:  "proxy",
+			TargetURL:    tphServerURL + "/inference",
 			Enabled:      true,
 			Tags:         []string{"tph", "inference", "gpu", "ml"},
 		},
 		{
-			Name:        "tph_status",
-			Description: "Check TPH GPU server status and model info",
+			Name:         "tph_status",
+			Description:  "Check TPH GPU server status and model info",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-try:
-    resp = requests.get('http://localhost:5000/status')
-    result = resp.json()
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'error': str(e), 'status': 'offline'}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"tph", "status", "gpu"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"tph", "status", "gpu"},
 		},
 		{
-			Name:        "formula_match",
-			Description: "Match DynamicFlux Python formula against Lean symbols",
+			Name:         "formula_match",
+			Description:  "Match DynamicFlux Python formula against Lean symbols",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Python formula to match (e.g., 'x**2 + y**2')","default":""}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `echo '{"status": "not_implemented", "message": "Formula matching requires DynamicFlux integration. Path: /workspace/vessel-production/DynamicFlux/formula_matcher.py", "placeholder": true}'`,
-			Enabled: false,
-			Tags:    []string{"formula", "dynamicflux", "matching", "placeholder"},
+			HandlerType:  "builtin",
+			Enabled:      false,
+			Tags:         []string{"formula", "dynamicflux", "matching", "placeholder"},
 		},
 		{
-			Name:        "wolfram_verify",
-			Description: "Verify mathematical formula via Wolfram Engine",
+			Name:         "wolfram_verify",
+			Description:  "Verify mathematical formula via Wolfram Engine",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Mathematical formula in Wolfram Language","default":"Integrate[x^2, x]"}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `echo '{"status": "not_implemented", "message": "Wolfram verification requires C# UniversalLLMOrchestrator. Path: /mnt/doscratch/Work/AMD_COMPETITION_MVP/Quantum_Study_Hall/Grok_Research_Tool/", "placeholder": true}'`,
-			Enabled: false,
-			Tags:    []string{"wolfram", "verification", "math", "placeholder"},
+			HandlerType:  "builtin",
+			Enabled:      false,
+			Tags:         []string{"wolfram", "verification", "math", "placeholder"},
 		},
 		{
-			Name:        "env_check",
-			Description: "Validate Python environment and dependencies",
+			Name:         "env_check",
+			Description:  "Validate Python environment and dependencies",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"verbose":{"type":"boolean","description":"Show detailed package information","default":false}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import sys
-import json
-import importlib.metadata
-
-result = {
-    'python_version': sys.version,
-    'python_path': sys.executable,
-    'packages': {}
-}
-
-for pkg in ['torch', 'requests', 'flask', 'flask_cors', 'numpy', 'psycopg2']:
-    try:
-        v = importlib.metadata.version(pkg)
-        result['packages'][pkg] = v
-    except:
-        result['packages'][pkg] = 'NOT INSTALLED'
-
-print(json.dumps(result, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"env", "python", "dependencies", "diagnostics"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"env", "python", "dependencies", "diagnostics"},
 		},
 		{
-			Name:        "gpu_check",
-			Description: "Check AMD GPU status and ROCm availability",
+			Name:         "gpu_check",
+			Description:  "Check AMD GPU status and ROCm availability",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import subprocess
-import json
-
-result = {'gpu_available': False, 'rocm_version': None, 'gpus': []}
-
-try:
-    # Check ROCm
-    rocm_output = subprocess.check_output(['rocm-smi', '--showproductname'], text=True)
-    result['gpu_available'] = True
-    result['gpus'] = [line.strip() for line in rocm_output.split('\\n') if line.strip()]
-    
-    # Check PyTorch CUDA
-    import torch
-    result['torch_cuda'] = torch.cuda.is_available()
-    result['torch_device_count'] = torch.cuda.device_count()
-    if torch.cuda.is_available():
-        result['torch_device_name'] = torch.cuda.get_device_name(0)
-except Exception as e:
-    result['error'] = str(e)
-
-print(json.dumps(result, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"gpu", "rocm", "hardware", "diagnostics"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"gpu", "rocm", "hardware", "diagnostics"},
 		},
 		{
-			Name:        "lean_db_health",
-			Description: "Check Lean4-Automata database health and statistics",
+			Name:         "lean_db_health",
+			Description:  "Check Lean4-Automata database health and statistics",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-try:
-    # Query database statistics
-    queries = {
-        'total_files': 'SELECT COUNT(DISTINCT file_path) FROM lean_symbols',
-        'total_symbols': 'SELECT COUNT(*) FROM lean_symbols',
-        'sorry_count': 'SELECT SUM(sorry_count) FROM v_proof_status',
-        'floating_symbols': 'SELECT COUNT(*) FROM v_floating_symbols'
-    }
-    
-    result = {'status': 'ok', 'stats': {}}
-    
-    for key, query in queries.items():
-        resp = requests.get('http://localhost:8000/query', json={'query': query})
-        if resp.status_code == 200:
-            result['stats'][key] = resp.json()
-        else:
-            result['stats'][key] = 'error'
-    
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'status': 'error', 'error': str(e)}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"lean", "database", "health", "statistics"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"lean", "database", "health", "statistics"},
 		},
 		{
-			Name:        "quick_proof_report",
-			Description: "Generate comprehensive proof status report",
+			Name:         "quick_proof_report",
+			Description:  "Generate comprehensive proof status report",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"format":{"type":"string","description":"Output format: json or markdown","default":"json","enum":["json","markdown"]}}}`),
-			HandlerType: "subprocess",
-			CommandTemplate: `
-import requests
-import json
-
-try:
-    # Get proof status summary
-    resp = requests.get('http://localhost:8000/query', json={
-        'query': '''
-            SELECT 
-                COUNT(*) as total_files,
-                SUM(sorry_count) as total_sorries,
-                SUM(CASE WHEN sorry_count = 0 THEN 1 ELSE 0 END) as complete_files,
-                AVG(sorry_count) as avg_sorries_per_file
-            FROM v_proof_status
-        '''
-    })
-    
-    result = {
-        'summary': resp.json(),
-        'top_sorry_files': [],
-        'timestamp': __import__('datetime').datetime.now().isoformat()
-    }
-    
-    # Get top 10 files with most sorries
-    resp2 = requests.get('http://localhost:8000/query', json={
-        'query': 'SELECT file_path, sorry_count FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC LIMIT 10'
-    })
-    result['top_sorry_files'] = resp2.json()
-    
-    print(json.dumps(result, indent=2))
-except Exception as e:
-    print(json.dumps({'error': str(e)}, indent=2))
-`,
-			Enabled: true,
-			Tags:    []string{"lean", "proof", "report", "summary"},
+			HandlerType:  "builtin",
+			Enabled:      true,
+			Tags:         []string{"lean", "proof", "report", "summary"},
 		},
 	}
 
-	stmt, err := db.Prepare(`INSERT INTO flow_definitions (name, description, params_schema, handler_type, command_template, enabled, tags) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := db.Prepare(`INSERT INTO flow_definitions (name, description, params_schema, handler_type, target_url, enabled, tags) VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -455,7 +334,7 @@ except Exception as e:
 
 	for _, flow := range flows {
 		tagsJSON, _ := json.Marshal(flow.Tags)
-		_, err := stmt.Exec(flow.Name, flow.Description, flow.ParamsSchema, flow.HandlerType, flow.CommandTemplate, flow.Enabled, tagsJSON)
+		_, err := stmt.Exec(flow.Name, flow.Description, flow.ParamsSchema, flow.HandlerType, flow.TargetURL, flow.Enabled, tagsJSON)
 		if err != nil {
 			return err
 		}
@@ -522,8 +401,8 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	// Get flow definition
 	var flow FlowDefinition
 	var tagsJSON string
-	err := forumDB.QueryRow(`SELECT name, description, handler_type, command_template, tags FROM flow_definitions WHERE name = ? AND enabled = 1`, flowName).
-		Scan(&flow.Name, &flow.Description, &flow.HandlerType, &flow.CommandTemplate, &tagsJSON)
+	err := forumDB.QueryRow(`SELECT name, description, handler_type, target_url, tags FROM flow_definitions WHERE name = ? AND enabled = 1`, flowName).
+		Scan(&flow.Name, &flow.Description, &flow.HandlerType, &flow.TargetURL, &tagsJSON)
 	if err != nil {
 		http.Error(w, "Flow not found", http.StatusNotFound)
 		return
@@ -562,13 +441,21 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	var status string
 	var errorMsg string
 
-	if flow.HandlerType == "subprocess" {
-		outputJSON, status, errorMsg = executeSubprocessFlow(w, flusher, flow, input)
-	} else if flow.HandlerType == "proxy" {
-		outputJSON, status, errorMsg = executeProxyFlow(w, flusher, flow, input)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
+	defer cancel()
+
+	if flow.HandlerType == "proxy" {
+		outputJSON, status, errorMsg = executeProxyFlow(ctx, w, flusher, flow, input)
 	} else {
-		status = "error"
-		errorMsg = "Unknown handler type"
+		// Look up in compile-time registry
+		fn, ok := flowRegistry[flow.Name]
+		if !ok {
+			status = "error"
+			errorMsg = "Flow not registered"
+			outputJSON = json.RawMessage(fmt.Sprintf(`{"error":"Flow %s not found in registry"}`, flow.Name))
+		} else {
+			outputJSON, status, errorMsg = fn(ctx, input.Input, w, flusher)
+		}
 	}
 
 	durationMS := time.Since(startTime).Milliseconds()
@@ -596,81 +483,38 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	sendSSE(w, flusher, "done", DoneMessage{DurationMS: durationMS})
 }
 
-// Execute subprocess flow
-func executeSubprocessFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefinition, input FlowInput) (json.RawMessage, string, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
-	defer cancel()
+// ============================================================================
+// Flow Function Implementations
+// ============================================================================
 
-	// SECURITY FIX: Replace bash -c with direct command execution
-	// Parse command template - flows are from DB seed, not user input
-	// Command templates are hardcoded Python scripts, safe to execute directly
-	command := flow.CommandTemplate
-	
-	// Execute python3 directly without shell interpolation
-	cmd := exec.CommandContext(ctx, "python3", "-c", command)
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-
-	if err := cmd.Start(); err != nil {
-		return json.RawMessage(`{}`), "error", err.Error()
-	}
-
-	var output strings.Builder
-	var wg sync.WaitGroup
-
-	// Stream stdout
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			output.WriteString(line + "\n")
-			sendSSE(w, flusher, "log", LogMessage{Level: "stdout", Message: line})
-		}
-	}()
-
-	// Stream stderr
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			sendSSE(w, flusher, "log", LogMessage{Level: "stderr", Message: line})
-		}
-	}()
-
-	wg.Wait()
-	err := cmd.Wait()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return json.RawMessage(`{"error":"timeout"}`), "timeout", "Flow execution timeout"
-	}
-
-	if err != nil {
-		return json.RawMessage(fmt.Sprintf(`{"error":"%s"}`, err.Error())), "error", err.Error()
-	}
-
-	return json.RawMessage(output.String()), "success", ""
+// Helper to send SSE log messages
+func sendFlowLog(w http.ResponseWriter, flusher http.Flusher, level, message string) {
+	sendSSE(w, flusher, "log", LogMessage{Level: level, Message: message})
 }
 
-// Execute proxy flow (e.g., TPH inference)
-func executeProxyFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefinition, input FlowInput) (json.RawMessage, string, string) {
-	// SECURITY FIX: Use context with timeout and limit response body size
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
-	defer cancel()
-
-	var targetURL string
-	if flow.Name == "tph_inference" {
-		targetURL = tphServerURL + "/inference"
-	} else {
-		return json.RawMessage(`{}`), "error", "Unknown proxy target"
+// flowNotImplemented creates a placeholder flow function
+func flowNotImplemented(name string) FlowFunc {
+	return func(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+		sendFlowLog(w, flusher, "warn", fmt.Sprintf("Flow %s not yet implemented", name))
+		result := map[string]interface{}{
+			"status":  "not_implemented",
+			"message": fmt.Sprintf("Flow %s is a placeholder and not yet implemented", name),
+		}
+		resultJSON, _ := json.Marshal(result)
+		return resultJSON, "success", ""
 	}
+}
 
-	// Forward request with context timeout
-	body, _ := json.Marshal(input.Input)
-	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, strings.NewReader(string(body)))
+// flowLeanSorryScan queries the Lean database for files with sorry statements
+func flowLeanSorryScan(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Querying Lean database for sorry statements...")
+
+	query := map[string]string{
+		"query": "SELECT file_path, sorry_count, total_declarations FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC",
+	}
+	queryJSON, _ := json.Marshal(query)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(queryJSON)))
 	if err != nil {
 		return json.RawMessage(`{}`), "error", err.Error()
 	}
@@ -679,6 +523,323 @@ func executeProxyFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefi
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to query Lean DB: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	defer resp.Body.Close()
+
+	output, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Found %d bytes of sorry scan results", len(output)))
+
+	return json.RawMessage(output), "success", ""
+}
+
+// flowLeanFloatScan queries the Lean database for floating symbols
+func flowLeanFloatScan(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Querying Lean database for floating symbols...")
+
+	limit := 100
+	if l, ok := params["limit"].(float64); ok {
+		limit = int(l)
+	}
+
+	query := map[string]string{
+		"query": fmt.Sprintf("SELECT symbol_name, file_path, definition_type FROM v_floating_symbols ORDER BY symbol_name LIMIT %d", limit),
+	}
+	queryJSON, _ := json.Marshal(query)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(queryJSON)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to query Lean DB: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	defer resp.Body.Close()
+
+	output, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Found floating symbols results"))
+
+	return json.RawMessage(output), "success", ""
+}
+
+// flowLeanFileInterconnect analyzes file dependencies and imports
+func flowLeanFileInterconnect(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Analyzing file dependencies...")
+
+	query := map[string]string{
+		"query": "SELECT file_path, import_count, exported_symbols FROM v_file_interconnect ORDER BY import_count DESC LIMIT 50",
+	}
+	queryJSON, _ := json.Marshal(query)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(queryJSON)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to query Lean DB: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	defer resp.Body.Close()
+
+	output, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	sendFlowLog(w, flusher, "info", "File interconnect analysis complete")
+
+	return json.RawMessage(output), "success", ""
+}
+
+// flowLeanDBHealth checks the health of the Lean database
+func flowLeanDBHealth(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Checking Lean database health...")
+
+	queries := map[string]string{
+		"total_files":      "SELECT COUNT(DISTINCT file_path) FROM lean_symbols",
+		"total_symbols":    "SELECT COUNT(*) FROM lean_symbols",
+		"sorry_count":      "SELECT SUM(sorry_count) FROM v_proof_status",
+		"floating_symbols": "SELECT COUNT(*) FROM v_floating_symbols",
+	}
+
+	result := map[string]interface{}{
+		"status": "ok",
+		"stats":  make(map[string]interface{}),
+	}
+
+	client := &http.Client{}
+	for key, queryStr := range queries {
+		queryBody := map[string]string{"query": queryStr}
+		queryJSON, _ := json.Marshal(queryBody)
+
+		req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(queryJSON)))
+		if err != nil {
+			result["stats"].(map[string]interface{})[key] = "error"
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			result["stats"].(map[string]interface{})[key] = "error"
+			continue
+		}
+
+		output, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+		resp.Body.Close()
+
+		var queryResult interface{}
+		json.Unmarshal(output, &queryResult)
+		result["stats"].(map[string]interface{})[key] = queryResult
+
+		sendFlowLog(w, flusher, "info", fmt.Sprintf("Checked %s", key))
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	sendFlowLog(w, flusher, "info", "Database health check complete")
+
+	return resultJSON, "success", ""
+}
+
+// flowQuickProofReport generates a comprehensive proof status report
+func flowQuickProofReport(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Generating proof status report...")
+
+	client := &http.Client{}
+
+	// Get summary statistics
+	summaryQuery := map[string]string{
+		"query": `SELECT 
+			COUNT(*) as total_files,
+			SUM(sorry_count) as total_sorries,
+			SUM(CASE WHEN sorry_count = 0 THEN 1 ELSE 0 END) as complete_files,
+			AVG(sorry_count) as avg_sorries_per_file
+		FROM v_proof_status`,
+	}
+	summaryJSON, _ := json.Marshal(summaryQuery)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(summaryJSON)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to get summary: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+
+	summaryOutput, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+	resp.Body.Close()
+
+	var summary interface{}
+	json.Unmarshal(summaryOutput, &summary)
+
+	sendFlowLog(w, flusher, "info", "Retrieved summary statistics")
+
+	// Get top sorry files
+	topQuery := map[string]string{
+		"query": "SELECT file_path, sorry_count FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC LIMIT 10",
+	}
+	topJSON, _ := json.Marshal(topQuery)
+
+	req2, err := http.NewRequestWithContext(ctx, "POST", leanDBURL+"/query", strings.NewReader(string(topJSON)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req2.Header.Set("Content-Type", "application/json")
+
+	resp2, err := client.Do(req2)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to get top files: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+
+	topOutput, _ := io.ReadAll(io.LimitReader(resp2.Body, 1*1024*1024))
+	resp2.Body.Close()
+
+	var topFiles interface{}
+	json.Unmarshal(topOutput, &topFiles)
+
+	sendFlowLog(w, flusher, "info", "Retrieved top sorry files")
+
+	result := map[string]interface{}{
+		"summary":         summary,
+		"top_sorry_files": topFiles,
+		"timestamp":       time.Now().Format(time.RFC3339),
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	sendFlowLog(w, flusher, "info", "Proof report generation complete")
+
+	return resultJSON, "success", ""
+}
+
+// flowTPHStatus checks the TPH server status
+func flowTPHStatus(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Checking TPH server status...")
+
+	req, err := http.NewRequestWithContext(ctx, "GET", tphServerURL+"/status", nil)
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("TPH server offline: %v", err))
+		result := map[string]interface{}{
+			"error":  err.Error(),
+			"status": "offline",
+		}
+		resultJSON, _ := json.Marshal(result)
+		return resultJSON, "success", ""
+	}
+	defer resp.Body.Close()
+
+	output, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+	sendFlowLog(w, flusher, "info", "TPH server is online")
+
+	return json.RawMessage(output), "success", ""
+}
+
+// flowEnvCheck validates the Python environment and dependencies
+func flowEnvCheck(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Checking Python environment...")
+
+	// Check Python version - SAFE: hardcoded command with NO user input
+	cmd := exec.CommandContext(ctx, "python3", "--version")
+	output, err := cmd.Output()
+	pythonVersion := strings.TrimSpace(string(output))
+	if err != nil {
+		pythonVersion = "Not available"
+	}
+
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Python version: %s", pythonVersion))
+
+	// Check for .venv
+	homeDir := os.Getenv("HOME")
+	venvPath := filepath.Join(homeDir, "workspace", ".venv")
+	venvExists := false
+	if _, err := os.Stat(venvPath); err == nil {
+		venvExists = true
+		sendFlowLog(w, flusher, "info", "Virtual environment found")
+	}
+
+	result := map[string]interface{}{
+		"python_version": pythonVersion,
+		"venv_active":    venvExists,
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	sendFlowLog(w, flusher, "info", "Environment check complete")
+
+	return resultJSON, "success", ""
+}
+
+// flowGPUCheck checks AMD GPU status and ROCm availability
+func flowGPUCheck(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Checking GPU status...")
+
+	result := map[string]interface{}{
+		"gpu_available": false,
+		"gpus":          []string{},
+	}
+
+	// Check ROCm - SAFE: hardcoded command with NO user input
+	cmd := exec.CommandContext(ctx, "rocm-smi", "--showproductname")
+	output, err := cmd.Output()
+	if err == nil {
+		result["gpu_available"] = true
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		gpus := []string{}
+		for _, line := range lines {
+			if line = strings.TrimSpace(line); line != "" {
+				gpus = append(gpus, line)
+			}
+		}
+		result["gpus"] = gpus
+		sendFlowLog(w, flusher, "info", fmt.Sprintf("Found %d GPU(s)", len(gpus)))
+	} else {
+		sendFlowLog(w, flusher, "warn", "ROCm not available")
+	}
+
+	// Check memory info - SAFE: hardcoded command with NO user input
+	cmd2 := exec.CommandContext(ctx, "rocm-smi", "--showmeminfo", "vram")
+	memOutput, err := cmd2.Output()
+	if err == nil {
+		result["vram_info"] = strings.TrimSpace(string(memOutput))
+		sendFlowLog(w, flusher, "info", "Retrieved VRAM information")
+	}
+
+	resultJSON, _ := json.Marshal(result)
+	sendFlowLog(w, flusher, "info", "GPU check complete")
+
+	return resultJSON, "success", ""
+}
+
+// Execute proxy flow (e.g., TPH inference)
+func executeProxyFlow(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, flow FlowDefinition, input FlowInput) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Proxying request to %s", flow.TargetURL))
+
+	body, _ := json.Marshal(input.Input)
+	req, err := http.NewRequestWithContext(ctx, "POST", flow.TargetURL, strings.NewReader(string(body)))
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Proxy request failed: %v", err))
 		return json.RawMessage(`{}`), "error", err.Error()
 	}
 	defer resp.Body.Close()
@@ -686,7 +847,7 @@ func executeProxyFlow(w http.ResponseWriter, flusher http.Flusher, flow FlowDefi
 	// SECURITY FIX: Limit response body to 4MB to prevent memory exhaustion
 	limitedReader := io.LimitReader(resp.Body, 4*1024*1024)
 	output, _ := io.ReadAll(limitedReader)
-	sendSSE(w, flusher, "log", LogMessage{Level: "info", Message: string(output)})
+	sendFlowLog(w, flusher, "info", "Proxy request completed")
 
 	return json.RawMessage(output), "success", ""
 }

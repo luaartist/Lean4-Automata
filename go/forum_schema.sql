@@ -60,20 +60,20 @@ CREATE TABLE IF NOT EXISTS flow_definitions (
     name TEXT PRIMARY KEY,
     description TEXT NOT NULL,
     params_schema TEXT NOT NULL,  -- JSON schema for input parameters
-    handler_type TEXT NOT NULL,  -- 'subprocess' or 'proxy'
-    command_template TEXT,  -- Shell command for subprocess flows
+    handler_type TEXT NOT NULL,  -- 'builtin' or 'proxy'
+    target_url TEXT,  -- Target URL for proxy flows
     enabled BOOLEAN NOT NULL DEFAULT 1,
     tags TEXT  -- JSON array: ["lean", "sorry"]
 );
 
 -- Example insert:
--- INSERT INTO flow_definitions (name, description, params_schema, handler_type, command_template, enabled, tags)
+-- INSERT INTO flow_definitions (name, description, params_schema, handler_type, target_url, enabled, tags)
 -- VALUES (
 --     'lean_sorry_scan',
 --     'Scan Lean4 codebase for sorry statements',
 --     '{"type":"object","properties":{"file_pattern":{"type":"string","default":"*.lean"}}}',
---     'subprocess',
---     'python3 -c "import requests; print(requests.get(''http://localhost:8000/query'').json())"',
+--     'builtin',
+--     NULL,
 --     1,
 --     '["lean", "sorry"]'
 -- );
