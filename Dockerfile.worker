@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.13-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Build deps for any wheel that lacks a manylinux build (kept minimal).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential libpq5 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/ requirements/
+RUN pip install -r requirements/db.txt \
+ && pip install -r requirements/api.txt \
+ && pip install -r requirements/workers.txt
+
+COPY . .
+
+# Default: Celery worker. ``docker-compose.yml`` overrides ``command`` for
+# the ``watcher`` service.
+CMD ["celery", "-A", "workers.celery_app", "worker", "--loglevel=info", "--concurrency=4"]

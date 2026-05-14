@@ -47,6 +47,54 @@ services:
       retries: 3
       start_period: 10s
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: lean4-automata-worker:dev
+    restart: unless-stopped
+    command: ["celery", "-A", "workers.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  watcher:
+    image: lean4-automata-worker:dev
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    command: ["python", "-m", "parser.watcher"]
+    env_file:
+      - .env
+    environment:
+      LEAN_WATCH_ROOT: /lean-src
+      LEAN_PROJECT_ID: ${LEAN_PROJECT_ID:-1}
+    volumes:
+      - ${LEAN_WATCH_ROOT:-./lean-src}:/lean-src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flower:
+    image: mher/flower:2.0
+    restart: unless-stopped
+    command: ["celery", "--broker=${REDIS_URL:-redis://redis:6379}", "flower", "--port=5555"]
+    environment:
+      CELERY_BROKER_URL: ${REDIS_URL:-redis://redis:6379}
+      CELERY_RESULT_BACKEND: ${REDIS_URL:-redis://redis:6379}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
