@@ -25,6 +25,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,22 @@ class LeanFileHandler(FileSystemEventHandler):
         self._pending: dict[Path, threading.Timer] = {}
         self._lock = threading.Lock()
         self._redis: redis.Redis | None = None
+        self._vault_lock = threading.Lock()
+        self._proof_vault_enabled = os.environ.get("LEAN_PROOF_VAULT_ENABLED", "1").lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+        self._proof_vault_dir = Path(
+            os.environ.get("LEAN_PROOF_VAULT_DIR", "~/.lean4a/proof_vault")
+        ).expanduser()
+        self._proof_vault_seed_on_start = os.environ.get("LEAN_PROOF_VAULT_SEED_ON_START", "1").lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
 
     # ── Watchdog callbacks ────────────────────────────────────────────────────
 
@@ -184,6 +201,7 @@ class LeanFileHandler(FileSystemEventHandler):
             if row is not None and row[1] == sha:
                 log.info("Watcher: skipped (hash match) %s", rel)
                 return
+            self._write_proof_snapshot(rel=rel, raw=raw, sha=sha, event="upsert")
 
             try:
                 parsed = parse_file(path)
@@ -420,6 +438,7 @@ class LeanFileHandler(FileSystemEventHandler):
         rel = self._rel_path(path)
         if not rel:
             return
+        self._write_proof_tombstone(rel=rel)
         deleted_file_id: int | None = None
         with psycopg.connect(self.db_url, autocommit=True) as conn, conn.cursor() as cur:
             cur.execute(
@@ -435,6 +454,82 @@ class LeanFileHandler(FileSystemEventHandler):
                 deleted_file_id = int(row[0])
         log.info("Watcher: deleted file row for %s", rel)
         self._invalidate_cache(rel, [], file_id=deleted_file_id)
+
+    def seed_proof_vault(self) -> None:
+        """Clone all existing Lean files into the proof vault once at startup."""
+        if not self._proof_vault_enabled or not self._proof_vault_seed_on_start:
+            return
+        count = 0
+        for path in self.root_dir.rglob("*.lean"):
+            try:
+                raw = path.read_bytes()
+            except (OSError, PermissionError) as exc:
+                log.warning("Watcher: seed snapshot read failed for %s: %s", path, exc)
+                continue
+            rel = self._rel_path(path)
+            if not rel:
+                continue
+            sha = hashlib.sha256(raw).hexdigest()
+            self._write_proof_snapshot(rel=rel, raw=raw, sha=sha, event="seed")
+            count += 1
+        log.info("Watcher: proof vault seed complete (%d files)", count)
+
+    def _write_proof_snapshot(self, rel: str, raw: bytes, sha: str, event: str) -> None:
+        """Persist append-only snapshots so proof files survive accidental deletion."""
+        if not self._proof_vault_enabled:
+            return
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        rel_posix = rel.replace("\\", "/")
+
+        obj_dir = self._proof_vault_dir / "objects" / sha[:2] / sha[2:4]
+        obj_path = obj_dir / f"{sha}.lean"
+        latest_path = self._proof_vault_dir / "latest" / rel_posix
+        manifest_path = self._proof_vault_dir / "manifest.jsonl"
+
+        try:
+            obj_dir.mkdir(parents=True, exist_ok=True)
+            latest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if not obj_path.exists():
+                obj_path.write_bytes(raw)
+                # Read-only object copies reduce accidental mutation risk.
+                obj_path.chmod(0o444)
+
+            latest_path.write_bytes(raw)
+            entry = {
+                "ts": ts,
+                "event": event,
+                "project_id": self.project_id,
+                "relative_path": rel_posix,
+                "sha256": sha,
+                "size_bytes": len(raw),
+                "object_path": str(obj_path),
+                "latest_path": str(latest_path),
+            }
+            with self._vault_lock:
+                with manifest_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            log.info("Watcher: proof snapshot saved %s (%s)", rel_posix, sha[:12])
+        except OSError as exc:
+            log.warning("Watcher: proof snapshot failed for %s: %s", rel_posix, exc)
+
+    def _write_proof_tombstone(self, rel: str) -> None:
+        if not self._proof_vault_enabled:
+            return
+        manifest_path = self._proof_vault_dir / "manifest.jsonl"
+        entry = {
+            "ts": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"),
+            "event": "delete",
+            "project_id": self.project_id,
+            "relative_path": rel.replace("\\", "/"),
+        }
+        try:
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._vault_lock:
+                with manifest_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            log.warning("Watcher: proof tombstone write failed for %s: %s", rel, exc)
 
     # ── Cache invalidation ────────────────────────────────────────────────────
 
@@ -561,6 +656,8 @@ def main() -> None:
     log.info("│   watch_root = %s", watch_root)
     log.info("│   db_url     = %s", _redact(settings.DATABASE_URL))
     log.info("│   redis_url  = %s", _redact(settings.REDIS_URL))
+    log.info("│   proof_vault_enabled = %s", os.environ.get("LEAN_PROOF_VAULT_ENABLED", "1"))
+    log.info("│   proof_vault_dir     = %s", os.environ.get("LEAN_PROOF_VAULT_DIR", "~/.lean4a/proof_vault"))
     log.info("└─────────────────────────────────────────────────────────────")
 
     handler = LeanFileHandler(
@@ -569,6 +666,7 @@ def main() -> None:
         db_url=settings.DATABASE_URL,
         redis_url=settings.REDIS_URL,
     )
+    handler.seed_proof_vault()
     try:
         observer: Observer | PollingObserver = Observer()
         observer.schedule(handler, str(watch_root), recursive=True)

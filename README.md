@@ -1,6 +1,6 @@
 # Lean4-Automata
 
-A Lean 4 project for formal specification and verification of automata theory conceptual design and refined development.
+**A live proof observatory for Lean 4** — watches your source tree, tracks theorem and sorry counts per file over time, and exposes a queryable API + dashboard. Think `lake build` with memory.
 
 ---
 
@@ -35,12 +35,36 @@ cd Lean4-Automata
 # Copy env template (edit values as needed)
 cp .env.example .env
 
-# Bring up the full stack
+# Bring up the core watcher stack
+docker compose up --build postgres redis app
+
+# Optional: add ingestion + worker + watcher
 docker compose up --build
 
 # Health check
 curl http://localhost:8000/health
 ```
+
+---
+
+## Proof Vault (instant clone + anti-loss)
+
+The watcher now writes an append-only snapshot stream for every changed Lean file, so
+accidental deletions by agent workflows do not erase proof history.
+
+- Object store: `~/.lean4a/proof_vault/objects/<sha-prefix>/<sha>.lean` (read-only)
+- Latest mirror: `~/.lean4a/proof_vault/latest/<relative/path>.lean`
+- Event log: `~/.lean4a/proof_vault/manifest.jsonl` (`seed`, `upsert`, `delete`)
+
+Environment flags:
+
+- `LEAN_PROOF_VAULT_ENABLED=1` (default)
+- `LEAN_PROOF_VAULT_DIR=~/.lean4a/proof_vault`
+- `LEAN_PROOF_VAULT_SEED_ON_START=1` (clone existing `.lean` files on startup)
+
+This gives local immutability-by-history. Optional kernel-level controls like eBPF audit
+or filesystem immutable flags can be layered on top, but the vault works immediately
+without extra kernel tooling.
 
 ---
 
