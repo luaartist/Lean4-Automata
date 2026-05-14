@@ -77,7 +77,7 @@ export default function SymbolPage({
               onRetry={() => refetchGraph()}
             />
           )}
-          {graph && <DependencyGraph data={graph} />}
+          {graph && <DependencyGraph data={graph} projectId={projectId} moduleName={moduleName} />}
         </div>
 
         <div>

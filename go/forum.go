@@ -33,16 +33,16 @@ import (
 // ============================================================================
 
 var (
-	forumDB          *sql.DB
-	forumDBPath      = getEnv("LEAN4A_FORUM_DB", filepath.Join(os.Getenv("HOME"), ".lean4a", "forum.db"))
-	leanDBURL        = getEnv("LEAN_DB_URL", "http://localhost:8000")
-	tphServerURL     = getEnv("TPH_SERVER_URL", "http://localhost:5000")
-	flowTimeoutSec   = getEnvInt("FLOW_TIMEOUT_SEC", 30)
+	forumDB            *sql.DB
+	forumDBPath        = getEnv("LEAN4A_FORUM_DB", filepath.Join(os.Getenv("HOME"), ".lean4a", "forum.db"))
+	leanDBURL          = getEnv("LEAN_DB_URL", "http://localhost:8000")
+	tphServerURL       = getEnv("TPH_SERVER_URL", "http://localhost:5000")
+	flowTimeoutSec     = getEnvInt("FLOW_TIMEOUT_SEC", 30)
 	maxConcurrentFlows = getEnvInt("MAX_CONCURRENT_FLOWS", 5)
-	
+
 	// Flow execution limiter
 	flowSemaphore = make(chan struct{}, maxConcurrentFlows)
-	
+
 	// Active SSE connections
 	sseConnections = &sync.Map{}
 )
@@ -90,10 +90,10 @@ type Ticket struct {
 }
 
 type Session struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	CreatedAt  int64    `json:"created_at"`
-	TicketIDs  []string `json:"ticket_ids"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	CreatedAt int64    `json:"created_at"`
+	TicketIDs []string `json:"ticket_ids"`
 }
 
 type FlowDefinition struct {
@@ -114,7 +114,7 @@ type SSEMessage struct {
 }
 
 type LogMessage struct {
-	Level   string `json:"level"`   // info, error, stdout, stderr
+	Level   string `json:"level"` // info, error, stdout, stderr
 	Message string `json:"message"`
 }
 
@@ -138,7 +138,7 @@ type LLMChatRequest struct {
 }
 
 type OllamaMessage struct {
-	Role    string `json:"role"`    // "system" | "user" | "assistant"
+	Role    string `json:"role"` // "system" | "user" | "assistant"
 	Content string `json:"content"`
 }
 
@@ -162,10 +162,10 @@ type OllamaModel struct {
 }
 
 type StackContext struct {
-	DBHealth      string            `json:"db_health"`
-	AvailableFlows []string         `json:"available_flows"`
-	RecentTickets []TicketSummary   `json:"recent_tickets"`
-	ProofStats    string            `json:"proof_stats,omitempty"`
+	DBHealth       string          `json:"db_health"`
+	AvailableFlows []string        `json:"available_flows"`
+	RecentTickets  []TicketSummary `json:"recent_tickets"`
+	ProofStats     string          `json:"proof_stats,omitempty"`
 }
 
 type TicketSummary struct {
@@ -193,6 +193,13 @@ var flowRegistry = map[string]FlowFunc{
 	"formula_match":          flowNotImplemented("formula_match"),
 	"wolfram_verify":         flowNotImplemented("wolfram_verify"),
 	"lean_diff_mathlib":      flowNotImplemented("lean_diff_mathlib"),
+}
+
+// Placeholder flows that are not yet implemented
+var placeholderFlows = map[string]bool{
+	"formula_match":     true,
+	"wolfram_verify":    true,
+	"lean_diff_mathlib": true,
 }
 
 // ============================================================================
@@ -535,13 +542,15 @@ func sendFlowLog(w http.ResponseWriter, flusher http.Flusher, level, message str
 // flowNotImplemented creates a placeholder flow function
 func flowNotImplemented(name string) FlowFunc {
 	return func(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
-		sendFlowLog(w, flusher, "warn", fmt.Sprintf("Flow %s not yet implemented", name))
+		errorMsg := fmt.Sprintf("flow %s is not implemented", name)
+		sendFlowLog(w, flusher, "error", errorMsg)
 		result := map[string]interface{}{
-			"status":  "not_implemented",
-			"message": fmt.Sprintf("Flow %s is a placeholder and not yet implemented", name),
+			"not_implemented": true,
+			"flow":            name,
+			"message":         errorMsg,
 		}
 		resultJSON, _ := json.Marshal(result)
-		return resultJSON, "success", ""
+		return resultJSON, "error", errorMsg
 	}
 }
 
@@ -1180,7 +1189,7 @@ func handleEnvStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"venv_active":    venvActive,
+		"venv_active": venvActive,
 		// SECURITY FIX: venv_path removed — it exposed the server's home directory
 		"python_version": pythonVersion,
 		"gpu_available":  gpuAvailable,
@@ -1255,13 +1264,13 @@ func fetchLeanDBHealth(ctx context.Context) string {
 	if err != nil {
 		return "error (request failed)"
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return "error (unreachable)"
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode == 200 {
 		return "healthy"
 	}
@@ -1270,13 +1279,13 @@ func fetchLeanDBHealth(ctx context.Context) string {
 
 // fetchRecentTickets retrieves the last N tickets from SQLite
 func fetchRecentTickets(ctx context.Context, limit int) []TicketSummary {
-	rows, err := forumDB.QueryContext(ctx, 
+	rows, err := forumDB.QueryContext(ctx,
 		`SELECT status, flow_name FROM tickets ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
-	
+
 	var tickets []TicketSummary
 	for rows.Next() {
 		var status, flowName string
@@ -1298,23 +1307,23 @@ func fetchProofStats(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		return ""
 	}
-	
+
 	body, _ := io.ReadAll(resp.Body)
 	var stats map[string]interface{}
 	if err := json.Unmarshal(body, &stats); err != nil {
 		return ""
 	}
-	
+
 	var sb strings.Builder
 	if sorryCount, ok := stats["sorry_count"].(float64); ok {
 		sb.WriteString(fmt.Sprintf("- sorry_count: %.0f\n", sorryCount))
@@ -1330,20 +1339,23 @@ func buildStackContext(ctx context.Context) string {
 	var sb strings.Builder
 	sb.WriteString("You are a debugging assistant for Lean4-Automata, a Lean 4 proof-file analysis pipeline.\n\n")
 	sb.WriteString("## Current Stack State\n")
-	
+
 	// 1. DB health
 	health := fetchLeanDBHealth(ctx)
 	sb.WriteString(fmt.Sprintf("- Database: %s\n", health))
-	
+
 	// 2. Available flows
 	sb.WriteString("- Available analysis flows: ")
 	var flowNames []string
 	for k := range flowRegistry {
-		flowNames = append(flowNames, k)
+		// Exclude placeholder flows from LLM context
+		if !placeholderFlows[k] {
+			flowNames = append(flowNames, k)
+		}
 	}
 	sort.Strings(flowNames)
 	sb.WriteString(strings.Join(flowNames, ", ") + "\n")
-	
+
 	// 3. Recent tickets from SQLite
 	tickets := fetchRecentTickets(ctx, 5)
 	if len(tickets) > 0 {
@@ -1352,13 +1364,13 @@ func buildStackContext(ctx context.Context) string {
 			sb.WriteString(fmt.Sprintf("  * [%s] %s\n", t.Status, t.Title))
 		}
 	}
-	
+
 	// 4. Proof stats (if Lean API is available)
 	stats := fetchProofStats(ctx)
 	if stats != "" {
 		sb.WriteString("\n## Proof Statistics\n" + stats)
 	}
-	
+
 	sb.WriteString("\nYou can reference any flow by name. When the user asks about a specific file or proof, give concrete debugging advice based on the sorry_count, theorem_count, and proof_completion values.")
 	return sb.String()
 }
@@ -1367,10 +1379,13 @@ func buildStackContext(ctx context.Context) string {
 func buildStackContextObject(ctx context.Context) StackContext {
 	var flowNames []string
 	for k := range flowRegistry {
-		flowNames = append(flowNames, k)
+		// Exclude placeholder flows from LLM context
+		if !placeholderFlows[k] {
+			flowNames = append(flowNames, k)
+		}
 	}
 	sort.Strings(flowNames)
-	
+
 	return StackContext{
 		DBHealth:       fetchLeanDBHealth(ctx),
 		AvailableFlows: flowNames,
@@ -1389,17 +1404,17 @@ func handleLLMModels(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	
+
 	// Proxy to Ollama API
 	req, err := http.NewRequestWithContext(ctx, "GET", ollamaBaseURL+"/api/tags", nil)
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
 	}
-	
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1407,25 +1422,25 @@ func handleLLMModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		http.Error(w, "Ollama returned error", resp.StatusCode)
 		return
 	}
-	
+
 	body, _ := io.ReadAll(resp.Body)
 	var ollamaResp OllamaModelsResponse
 	if err := json.Unmarshal(body, &ollamaResp); err != nil {
 		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Extract model names
 	var modelNames []string
 	for _, m := range ollamaResp.Models {
 		modelNames = append(modelNames, m.Name)
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"models":  modelNames,
@@ -1439,19 +1454,19 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	// Parse request
 	var chatReq LLMChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&chatReq); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Default model if not specified
 	if chatReq.Model == "" {
 		chatReq.Model = defaultLLMModel
 	}
-	
+
 	// Build messages array
 	messages := chatReq.Messages
 	if chatReq.InjectContext {
@@ -1461,26 +1476,26 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 		}
 		messages = append([]OllamaMessage{systemMsg}, messages...)
 	}
-	
+
 	// Create Ollama request
 	ollamaReq := OllamaChatRequest{
 		Model:    chatReq.Model,
 		Messages: messages,
 		Stream:   true,
 	}
-	
+
 	reqBody, _ := json.Marshal(ollamaReq)
-	
+
 	ctx, cancel := context.WithTimeout(r.Context(), llmRequestTimeout)
 	defer cancel()
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", ollamaBaseURL+"/v1/chat/completions", strings.NewReader(string(reqBody)))
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1488,24 +1503,24 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		http.Error(w, "Ollama returned error", resp.StatusCode)
 		return
 	}
-	
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Stream response
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -1513,7 +1528,7 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 		if line == "" || !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		
+
 		// Remove "data: " prefix
 		jsonData := strings.TrimPrefix(line, "data: ")
 		if jsonData == "[DONE]" {
@@ -1521,13 +1536,13 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 			break
 		}
-		
+
 		// Parse and re-emit as SSE
 		var chunk map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonData), &chunk); err != nil {
 			continue
 		}
-		
+
 		// Extract content from OpenAI format
 		if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
 			if choice, ok := choices[0].(map[string]interface{}); ok {
@@ -1545,7 +1560,7 @@ func handleLLMChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error reading stream: %v", err)
 	}
@@ -1557,12 +1572,12 @@ func handleLLMContext(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	
+
 	contextObj := buildStackContextObject(ctx)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(contextObj)
 }
@@ -1587,7 +1602,7 @@ func registerForumRoutes() {
 	http.HandleFunc("/tph/inference", handleTPHInference)
 	http.HandleFunc("/env/status", handleEnvStatus)
 	http.HandleFunc("/health", handleHealth)
-	
+
 	// LLM debug agent routes
 	http.HandleFunc("/api/llm/models", handleLLMModels)
 	http.HandleFunc("/api/llm/chat", handleLLMChat)
@@ -1603,13 +1618,13 @@ func registerForumRoutes() {
 //     // Existing QMCP routes
 //     http.HandleFunc("/qmcp/v1/consent", handleConsentGate)
 //     http.HandleFunc("/api/regulator", handleConsentGate)
-//     
+//
 //     // NEW: Register forum routes
 //     registerForumRoutes()
-//     
+//
 //     log.Println("🚀 Starting QMCP Server (Go Orchestrator) on :8443...")
 //     go startBPF()
-//     
+//
 //     if err := http.ListenAndServe(":8443", nil); err != nil {
 //         log.Fatalf("Server failed: %v", err)
 //     }

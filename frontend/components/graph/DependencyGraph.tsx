@@ -21,6 +21,8 @@ import { ClusterNode } from './nodes/ClusterNode';
 
 interface DependencyGraphProps {
   data: DependencyGraphResponse;
+  projectId?: number;
+  moduleName?: string;
 }
 
 const nodeTypes = {
@@ -59,7 +61,7 @@ function getLayoutedElements(nodes: Node[], edges: Edge[], direction = 'TB') {
   return { nodes: layoutedNodes, edges };
 }
 
-export function DependencyGraph({ data }: DependencyGraphProps) {
+export function DependencyGraph({ data, projectId, moduleName }: DependencyGraphProps) {
   const { layout } = useGraphView();
   const { clusterThreshold } = useUIPrefs();
 
@@ -160,11 +162,12 @@ export function DependencyGraph({ data }: DependencyGraphProps) {
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      // Navigate to symbol detail
-      // Extract project and module from current URL or use default
-      window.location.href = `/projects/1/modules/unknown/symbols/${encodeURIComponent(node.data.fullName)}`;
+      // Navigate to symbol detail using provided context or fallback
+      const project = projectId || 1;
+      const module = moduleName || 'unknown';
+      window.location.href = `/projects/${project}/modules/${encodeURIComponent(module)}/symbols/${encodeURIComponent(node.data.fullName)}`;
     },
-    []
+    [projectId, moduleName]
   );
 
   // Clustering logic
