@@ -1,0 +1,428 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "lean4-loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "unit": "logs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "lean4-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} [$__auto]))",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log Volume by Service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "lean4-loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#F28B82",
+            "mode": "fixed"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "logs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "lean4-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)(error|critical|exception|traceback)\" [$__auto]))",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Error / Critical Log Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "lean4-loki"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "lean4-loki"
+          },
+          "editorMode": "code",
+          "expr": "{compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)${level:regex}\" |~ \"$search\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log Stream",
+      "type": "logs"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 4,
+      "panels": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "lean4-loki"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "color-background"
+                },
+                "inspect": false
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 10
+                  },
+                  {
+                    "color": "red",
+                    "value": 100
+                  }
+                ]
+              },
+              "unit": "logs"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          },
+          "id": 5,
+          "options": {
+            "cellHeight": "md",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "lean4-loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)debug\" [$__range]))",
+              "instant": true,
+              "legendFormat": "DEBUG",
+              "queryType": "instant",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "lean4-loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)info\" [$__range]))",
+              "instant": true,
+              "legendFormat": "INFO",
+              "queryType": "instant",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "lean4-loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)(warn|warning)\" [$__range]))",
+              "instant": true,
+              "legendFormat": "WARN",
+              "queryType": "instant",
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "lean4-loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)(error|exception|traceback)\" [$__range]))",
+              "instant": true,
+              "legendFormat": "ERROR",
+              "queryType": "instant",
+              "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "lean4-loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (compose_service) (count_over_time({compose_project=\"$compose_project\", compose_service=~\"$service\"} |~ \"(?i)critical\" [$__range]))",
+              "instant": true,
+              "legendFormat": "CRITICAL",
+              "queryType": "instant",
+              "refId": "E"
+            }
+          ],
+          "title": "Service × Level Counts",
+          "type": "table"
+        }
+      ],
+      "title": "Per-service breakdown",
+      "type": "row"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "lean4-automata",
+    "logs",
+    "loki"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "lean4-automata",
+          "value": "lean4-automata"
+        },
+        "hide": 2,
+        "label": "Compose project",
+        "name": "compose_project",
+        "options": [
+          {
+            "selected": true,
+            "text": "lean4-automata",
+            "value": "lean4-automata"
+          }
+        ],
+        "query": "lean4-automata",
+        "type": "constant"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "lean4-loki"
+        },
+        "definition": "label_values({compose_project=\"$compose_project\"}, compose_service)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "query": "label_values({compose_project=\"$compose_project\"}, compose_service)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Level",
+        "multi": false,
+        "name": "level",
+        "options": [
+          {
+            "selected": false,
+            "text": "DEBUG",
+            "value": "debug"
+          },
+          {
+            "selected": false,
+            "text": "INFO",
+            "value": "info"
+          },
+          {
+            "selected": false,
+            "text": "WARN",
+            "value": "warn|warning"
+          },
+          {
+            "selected": false,
+            "text": "ERROR",
+            "value": "error|exception|traceback"
+          },
+          {
+            "selected": false,
+            "text": "CRITICAL",
+            "value": "critical"
+          }
+        ],
+        "query": "DEBUG : debug, INFO : info, WARN : warn|warning, ERROR : error|exception|traceback, CRITICAL : critical",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Search",
+        "name": "search",
+        "query": "",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Logs Overview",
+  "uid": "lean4-logs-overview",
+  "version": 1,
+  "weekStart": ""
+}

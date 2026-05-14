@@ -1,0 +1,55 @@
+x-loki-options: &loki-options
+  loki-url: ${LOKI_PUSH_URL:-http://localhost:3100/loki/api/v1/push}
+  loki-batch-size: "400"
+  loki-retries: "3"
+  loki-timeout: "2s"
+
+services:
+  postgres:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=postgres,container_name={{.Name}}
+
+  redis:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=redis,container_name={{.Name}}
+
+  nginx:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=nginx,container_name={{.Name}}
+
+  worker:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=worker,container_name={{.Name}}
+
+  watcher:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=watcher,container_name={{.Name}}
+
+  flower:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=flower,container_name={{.Name}}
+
+  web:
+    logging:
+      driver: loki
+      options:
+        <<: *loki-options
+        loki-external-labels: compose_project=${COMPOSE_PROJECT_NAME:-lean4-automata},compose_service=web,container_name={{.Name}}

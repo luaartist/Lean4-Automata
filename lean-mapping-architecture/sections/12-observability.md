@@ -5,7 +5,7 @@
 | Pillar | Tool | Notes |
 |--------|------|-------|
 | **Metrics** | Prometheus + Grafana | Histogram per endpoint, cache hit ratio |
-| **Logs** | Structured JSON → stdout | Collected by container runtime |
+| **Logs** | Structured JSON → stdout → Loki | Grafana + Loki when log aggregation outgrows stdout |
 | **Traces** | OpenTelemetry → Jaeger | Distributed trace per request |
 
 ## Correlation IDs
@@ -65,11 +65,13 @@ async def correlation_id_middleware(request, call_next):
 ```
 
 All services log to **stdout** in JSON. Container runtimes (Docker,
-Kubernetes) collect and forward to the chosen log aggregator.
+Kubernetes) collect and forward to the chosen log aggregator. The lightweight
+Compose deployment ships a **Grafana + Loki** profile under `observability/`;
+it intentionally does not add Prometheus, Tempo, or OpenTelemetry.
 
 ## Dashboards
 
-A pre-built Grafana dashboard ships in `deploy/grafana/`:
+A pre-built Grafana dashboard ships in `observability/grafana/`:
 
 - **Overview** – request rate, error rate, p50/p95 latency.
 - **Cache** – hit/miss ratio, key count, memory usage.
