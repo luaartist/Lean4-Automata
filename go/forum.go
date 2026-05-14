@@ -89,8 +89,6 @@ type FlowDefinition struct {
 	Name         string          `json:"name"`
 	Description  string          `json:"description"`
 	ParamsSchema json.RawMessage `json:"params_schema"`
-	HandlerType  string          `json:"handler_type"` // builtin, proxy
-	TargetURL    string          `json:"target_url,omitempty"`
 	Enabled      bool            `json:"enabled"`
 	Tags         []string        `json:"tags"`
 }
@@ -131,13 +129,13 @@ var flowRegistry = map[string]FlowFunc{
 	"lean_file_interconnect": flowLeanFileInterconnect,
 	"lean_db_health":         flowLeanDBHealth,
 	"quick_proof_report":     flowQuickProofReport,
+	"tph_inference":          flowTPHInference,
 	"tph_status":             flowTPHStatus,
 	"env_check":              flowEnvCheck,
 	"gpu_check":              flowGPUCheck,
 	"formula_match":          flowNotImplemented("formula_match"),
 	"wolfram_verify":         flowNotImplemented("wolfram_verify"),
 	"lean_diff_mathlib":      flowNotImplemented("lean_diff_mathlib"),
-	"lean_mathlib_diff":      flowNotImplemented("lean_mathlib_diff"),
 }
 
 // ============================================================================
@@ -189,10 +187,9 @@ func initForumDB() error {
 		name TEXT PRIMARY KEY,
 		description TEXT NOT NULL,
 		params_schema TEXT NOT NULL,
-		handler_type TEXT NOT NULL,
-		target_url TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
-		tags TEXT
+		tags TEXT,
+		created_at INTEGER NOT NULL DEFAULT (unixepoch())
 	);
 
 	CREATE TABLE IF NOT EXISTS flow_logs (
@@ -225,13 +222,13 @@ func initForumDB() error {
 }
 
 func seedFlowDefinitions(db *sql.DB) error {
-	// SECURITY FIX: Removed CommandTemplate field — all flows are now compile-time Go functions
+	// SECURITY FIX: All flows are compile-time Go functions in flowRegistry
+	// Database only stores metadata — no code execution from DB
 	flows := []FlowDefinition{
 		{
 			Name:         "lean_sorry_scan",
 			Description:  "Scan Lean4 codebase for sorry statements",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_pattern":{"type":"string","description":"File pattern to match (e.g., *.lean)","default":"*.lean"}}}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"lean", "sorry", "proof-status"},
 		},
@@ -239,7 +236,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "lean_float_scan",
 			Description:  "Query floating symbols (definitions without proofs)",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum number of results","default":100}}}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"lean", "floating", "symbols"},
 		},
@@ -247,7 +243,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "lean_file_interconnect",
 			Description:  "Analyze file dependencies and imports",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string","description":"Specific file to analyze (optional)","default":""}}}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"lean", "dependencies", "imports"},
 		},
@@ -255,16 +250,13 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "lean_diff_mathlib",
 			Description:  "Compare local Lean files against mathlib (placeholder)",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"branch":{"type":"string","description":"Git branch to compare","default":"main"}}}`),
-			HandlerType:  "builtin",
 			Enabled:      false,
 			Tags:         []string{"lean", "mathlib", "diff", "placeholder"},
 		},
 		{
 			Name:         "tph_inference",
 			Description:  "Run token inference through TPH model on MI300X GPU",
-			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"tokens":{"type":"array","description":"Token IDs to process","items":{"type":"integer"},"default":[42,17,89]},"max_length":{"type":"integer","description":"Maximum sequence length","default":50}}}`),
-			HandlerType:  "proxy",
-			TargetURL:    tphServerURL + "/inference",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"input":{"type":"string","description":"Input text for inference","default":""},"tokens":{"type":"array","description":"Token IDs to process","items":{"type":"integer"},"default":[42,17,89]},"max_length":{"type":"integer","description":"Maximum sequence length","default":50}}}`),
 			Enabled:      true,
 			Tags:         []string{"tph", "inference", "gpu", "ml"},
 		},
@@ -272,7 +264,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "tph_status",
 			Description:  "Check TPH GPU server status and model info",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"tph", "status", "gpu"},
 		},
@@ -280,7 +271,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "formula_match",
 			Description:  "Match DynamicFlux Python formula against Lean symbols",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Python formula to match (e.g., 'x**2 + y**2')","default":""}}}`),
-			HandlerType:  "builtin",
 			Enabled:      false,
 			Tags:         []string{"formula", "dynamicflux", "matching", "placeholder"},
 		},
@@ -288,7 +278,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "wolfram_verify",
 			Description:  "Verify mathematical formula via Wolfram Engine",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"formula":{"type":"string","description":"Mathematical formula in Wolfram Language","default":"Integrate[x^2, x]"}}}`),
-			HandlerType:  "builtin",
 			Enabled:      false,
 			Tags:         []string{"wolfram", "verification", "math", "placeholder"},
 		},
@@ -296,7 +285,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "env_check",
 			Description:  "Validate Python environment and dependencies",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"verbose":{"type":"boolean","description":"Show detailed package information","default":false}}}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"env", "python", "dependencies", "diagnostics"},
 		},
@@ -304,7 +292,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "gpu_check",
 			Description:  "Check AMD GPU status and ROCm availability",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"gpu", "rocm", "hardware", "diagnostics"},
 		},
@@ -312,7 +299,6 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "lean_db_health",
 			Description:  "Check Lean4-Automata database health and statistics",
 			ParamsSchema: json.RawMessage(`{"type":"object"}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"lean", "database", "health", "statistics"},
 		},
@@ -320,13 +306,12 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Name:         "quick_proof_report",
 			Description:  "Generate comprehensive proof status report",
 			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"format":{"type":"string","description":"Output format: json or markdown","default":"json","enum":["json","markdown"]}}}`),
-			HandlerType:  "builtin",
 			Enabled:      true,
 			Tags:         []string{"lean", "proof", "report", "summary"},
 		},
 	}
 
-	stmt, err := db.Prepare(`INSERT INTO flow_definitions (name, description, params_schema, handler_type, target_url, enabled, tags) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := db.Prepare(`INSERT INTO flow_definitions (name, description, params_schema, enabled, tags) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -334,7 +319,7 @@ func seedFlowDefinitions(db *sql.DB) error {
 
 	for _, flow := range flows {
 		tagsJSON, _ := json.Marshal(flow.Tags)
-		_, err := stmt.Exec(flow.Name, flow.Description, flow.ParamsSchema, flow.HandlerType, flow.TargetURL, flow.Enabled, tagsJSON)
+		_, err := stmt.Exec(flow.Name, flow.Description, flow.ParamsSchema, flow.Enabled, tagsJSON)
 		if err != nil {
 			return err
 		}
@@ -354,7 +339,7 @@ func handleGetFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := forumDB.Query(`SELECT name, description, params_schema, handler_type, enabled, tags FROM flow_definitions WHERE enabled = 1`)
+	rows, err := forumDB.Query(`SELECT name, description, params_schema, enabled, tags FROM flow_definitions WHERE enabled = 1`)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		log.Printf("Error querying flows: %v", err)
@@ -366,7 +351,7 @@ func handleGetFlows(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var flow FlowDefinition
 		var tagsJSON string
-		if err := rows.Scan(&flow.Name, &flow.Description, &flow.ParamsSchema, &flow.HandlerType, &flow.Enabled, &tagsJSON); err != nil {
+		if err := rows.Scan(&flow.Name, &flow.Description, &flow.ParamsSchema, &flow.Enabled, &tagsJSON); err != nil {
 			continue
 		}
 		json.Unmarshal([]byte(tagsJSON), &flow.Tags)
@@ -401,8 +386,8 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	// Get flow definition
 	var flow FlowDefinition
 	var tagsJSON string
-	err := forumDB.QueryRow(`SELECT name, description, handler_type, target_url, tags FROM flow_definitions WHERE name = ? AND enabled = 1`, flowName).
-		Scan(&flow.Name, &flow.Description, &flow.HandlerType, &flow.TargetURL, &tagsJSON)
+	err := forumDB.QueryRow(`SELECT name, description, tags FROM flow_definitions WHERE name = ? AND enabled = 1`, flowName).
+		Scan(&flow.Name, &flow.Description, &tagsJSON)
 	if err != nil {
 		http.Error(w, "Flow not found", http.StatusNotFound)
 		return
@@ -444,18 +429,16 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(flowTimeoutSec)*time.Second)
 	defer cancel()
 
-	if flow.HandlerType == "proxy" {
-		outputJSON, status, errorMsg = executeProxyFlow(ctx, w, flusher, flow, input)
+	// SECURITY FIX: All flows execute from compile-time registry only
+	// No dynamic code execution from database
+	fn, ok := flowRegistry[flow.Name]
+	if !ok {
+		status = "error"
+		errorMsg = "Flow not registered"
+		outputJSON = json.RawMessage(fmt.Sprintf(`{"error":"Flow %s not found in registry"}`, flow.Name))
+		sendSSE(w, flusher, "error", LogMessage{Level: "error", Message: errorMsg})
 	} else {
-		// Look up in compile-time registry
-		fn, ok := flowRegistry[flow.Name]
-		if !ok {
-			status = "error"
-			errorMsg = "Flow not registered"
-			outputJSON = json.RawMessage(fmt.Sprintf(`{"error":"Flow %s not found in registry"}`, flow.Name))
-		} else {
-			outputJSON, status, errorMsg = fn(ctx, input.Input, w, flusher)
-		}
+		outputJSON, status, errorMsg = fn(ctx, input.Input, w, flusher)
 	}
 
 	durationMS := time.Since(startTime).Milliseconds()
@@ -825,29 +808,47 @@ func flowGPUCheck(ctx context.Context, params map[string]interface{}, w http.Res
 	return resultJSON, "success", ""
 }
 
-// Execute proxy flow (e.g., TPH inference)
-func executeProxyFlow(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, flow FlowDefinition, input FlowInput) (json.RawMessage, string, string) {
-	sendFlowLog(w, flusher, "info", fmt.Sprintf("Proxying request to %s", flow.TargetURL))
+// flowTPHInference executes inference on the TPH GPU server
+func flowTPHInference(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	sendFlowLog(w, flusher, "info", "Starting TPH inference request...")
 
-	body, _ := json.Marshal(input.Input)
-	req, err := http.NewRequestWithContext(ctx, "POST", flow.TargetURL, strings.NewReader(string(body)))
+	// Marshal parameters into request body
+	body, err := json.Marshal(params)
+	if err != nil {
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+
+	// SECURITY FIX: Use context with timeout from caller
+	req, err := http.NewRequestWithContext(ctx, "POST", tphServerURL+"/inference", strings.NewReader(string(body)))
 	if err != nil {
 		return json.RawMessage(`{}`), "error", err.Error()
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Sending request to TPH server: %s", tphServerURL))
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		sendFlowLog(w, flusher, "error", fmt.Sprintf("Proxy request failed: %v", err))
-		return json.RawMessage(`{}`), "error", err.Error()
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("TPH server request failed: %v", err))
+		// Return structured error response
+		errorResult := map[string]interface{}{
+			"error":  err.Error(),
+			"status": "offline",
+		}
+		resultJSON, _ := json.Marshal(errorResult)
+		return resultJSON, "error", err.Error()
 	}
 	defer resp.Body.Close()
 
 	// SECURITY FIX: Limit response body to 4MB to prevent memory exhaustion
-	limitedReader := io.LimitReader(resp.Body, 4*1024*1024)
-	output, _ := io.ReadAll(limitedReader)
-	sendFlowLog(w, flusher, "info", "Proxy request completed")
+	output, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		sendFlowLog(w, flusher, "error", fmt.Sprintf("Failed to read response: %v", err))
+		return json.RawMessage(`{}`), "error", err.Error()
+	}
+
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("TPH inference completed, received %d bytes", len(output)))
 
 	return json.RawMessage(output), "success", ""
 }
