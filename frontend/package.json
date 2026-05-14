@@ -1,0 +1,38 @@
+{
+  "name": "lean4-automata-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js 16 LTS frontend for Lean4-Automata dependency analysis",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@tanstack/react-query": "^5.62.10",
+    "zustand": "^5.0.3",
+    "reactflow": "^11.11.4",
+    "dagre": "^0.8.5",
+    "@types/dagre": "^0.7.52"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.6",
+    "@types/react": "^19.0.6",
+    "@types/react-dom": "^19.0.2",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "postcss": "^8.4.49",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^16.2.6"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

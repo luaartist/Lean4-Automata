@@ -26,6 +26,24 @@ _MODULE_ORDER_FIELDS = {
     "documentation_coverage_pct",
 }
 
+# ── SSE per-IP connection cap ────────────────────────────────────────────────
+# In-process counter — sufficient for a single Uvicorn worker. With multiple
+# workers each enforces its own cap, so the effective per-IP limit is
+# (workers * _SSE_MAX_PER_IP). The authoritative cap MUST be enforced at the
+# Nginx layer in production via `limit_conn_zone` (see frontend/SECURITY.md
+# and nginx/nginx.conf for the production snippet).
+_SSE_MAX_PER_IP = 10
+_sse_lock = asyncio.Lock()
+_sse_active_per_ip: dict[str, int] = {}
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP, honoring X-Forwarded-For when behind a proxy."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 
 class SymbolLookupResponse(BaseModel):
     id: int
@@ -338,6 +356,19 @@ async def invalidation_events(request: Request) -> Any:
             content={"detail": "Redis unavailable: invalidation stream requires Redis"},
         )
 
+    # ── Per-IP connection cap (defense-in-depth; Nginx is authoritative) ────
+    ip = _client_ip(request)
+    async with _sse_lock:
+        current = _sse_active_per_ip.get(ip, 0)
+        if current >= _SSE_MAX_PER_IP:
+            logger.warning("SSE per-IP cap reached for %s (current=%d)", ip, current)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many concurrent SSE connections from this IP"},
+                headers={"Retry-After": "30"},
+            )
+        _sse_active_per_ip[ip] = current + 1
+
     async def event_stream():
         pubsub = redis_client.pubsub()
         heartbeat_at = time.monotonic()
@@ -369,12 +400,21 @@ async def invalidation_events(request: Request) -> Any:
                 await pubsub.aclose()
             except Exception:  # noqa: BLE001
                 logger.debug("SSE pubsub close failed", exc_info=True)
+            async with _sse_lock:
+                remaining = _sse_active_per_ip.get(ip, 1) - 1
+                if remaining <= 0:
+                    _sse_active_per_ip.pop(ip, None)
+                else:
+                    _sse_active_per_ip[ip] = remaining
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            # no-store prevents any intermediary (browser, proxy, CDN) from
+            # caching the event stream. Pair with Nginx `proxy_buffering off`
+            # for the /api/v1/events/ location (see nginx/nginx.conf).
+            "Cache-Control": "no-store",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },

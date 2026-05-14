@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -28,6 +30,25 @@ app = FastAPI(
 )
 
 # ── Middleware ────────────────────────────────────────────────────────────────
+# CORS must be registered BEFORE the request-id middleware so that the
+# CORSMiddleware can short-circuit OPTIONS preflights and inject
+# Access-Control-* headers on every response (including those produced by
+# downstream middleware/handlers). Starlette executes middleware in reverse
+# registration order, so registering CORS first makes it the outermost layer.
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=False,  # Query API is anonymous; no cookies/JWT.
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID", "Authorization"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
+)
 app.middleware("http")(request_id_middleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────

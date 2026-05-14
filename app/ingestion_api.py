@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -28,6 +30,23 @@ app = FastAPI(
 )
 
 # ── Middleware ────────────────────────────────────────────────────────────────
+# CORS registered before request-id middleware (see query_api.py for rationale).
+# Ingestion API accepts POST + OPTIONS in addition to GET so admin clients can
+# trigger indexing from the configured origins.
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=False,  # JWT in Authorization header — no cookies.
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID", "Authorization"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
+)
 app.middleware("http")(request_id_middleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
