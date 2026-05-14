@@ -1469,7 +1469,11 @@
                     const ticket = await resp.json();
                     
                     // FIX 5: JSON syntax highlighting
-                    const outputJson = JSON.stringify(JSON.parse(ticket.output_json), null, 2);
+                    // output_json may be a string or already-parsed object
+                    const parsed = typeof ticket.output_json === 'string'
+                        ? JSON.parse(ticket.output_json)
+                        : ticket.output_json;
+                    const outputJson = JSON.stringify(parsed, null, 2);
                     const highlightedJson = syntaxHighlightJson(outputJson);
                     content.innerHTML = `<pre>${highlightedJson}</pre>`;
                     content.classList.add('show');
