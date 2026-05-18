@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,12 +35,14 @@ import (
 // ============================================================================
 
 var (
-	forumDB            *sql.DB
-	forumDBPath        = getEnv("LEAN4A_FORUM_DB", filepath.Join(os.Getenv("HOME"), ".lean4a", "forum.db"))
-	leanDBURL          = getEnv("LEAN_DB_URL", "http://localhost:8000")
-	tphServerURL       = getEnv("TPH_SERVER_URL", "http://localhost:5000")
-	flowTimeoutSec     = getEnvInt("FLOW_TIMEOUT_SEC", 30)
-	maxConcurrentFlows = getEnvInt("MAX_CONCURRENT_FLOWS", 5)
+	forumDB             *sql.DB
+	forumDBPath         = getEnv("LEAN4A_FORUM_DB", filepath.Join(os.Getenv("HOME"), ".lean4a", "forum.db"))
+	leanDBURL           = getEnv("LEAN_DB_URL", "http://localhost:8000")
+	tphServerURL        = getEnv("TPH_SERVER_URL", "http://localhost:5000")
+	auditFastAPIBaseURL = normalizeBaseURL(getEnv("LEAN4A_AUDIT_FASTAPI_BASE_URL", "http://localhost:8000"))
+	auditUseFastAPI     = getEnvBool("LEAN4A_AUDIT_USE_FASTAPI", false)
+	flowTimeoutSec      = getEnvInt("FLOW_TIMEOUT_SEC", 30)
+	maxConcurrentFlows  = getEnvInt("MAX_CONCURRENT_FLOWS", 5)
 
 	// Flow execution limiter
 	flowSemaphore = make(chan struct{}, maxConcurrentFlows)
@@ -73,6 +77,24 @@ func getEnvInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
+func getEnvBool(key string, defaultVal bool) bool {
+	val := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch val {
+	case "":
+		return defaultVal
+	case "1", "true", "t", "yes", "y", "on":
+		return true
+	case "0", "false", "f", "no", "n", "off":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
+func normalizeBaseURL(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
+}
+
 // ============================================================================
 // Data Models
 // ============================================================================
@@ -105,7 +127,8 @@ type FlowDefinition struct {
 }
 
 type FlowInput struct {
-	Input map[string]interface{} `json:"input"`
+	Input  map[string]interface{} `json:"input"`
+	Params map[string]interface{} `json:"params"`
 }
 
 type SSEMessage struct {
@@ -181,18 +204,22 @@ type TicketSummary struct {
 type FlowFunc func(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string)
 
 var flowRegistry = map[string]FlowFunc{
-	"lean_sorry_scan":        flowLeanSorryScan,
-	"lean_float_scan":        flowLeanFloatScan,
-	"lean_file_interconnect": flowLeanFileInterconnect,
-	"lean_db_health":         flowLeanDBHealth,
-	"quick_proof_report":     flowQuickProofReport,
-	"tph_inference":          flowTPHInference,
-	"tph_status":             flowTPHStatus,
-	"env_check":              flowEnvCheck,
-	"gpu_check":              flowGPUCheck,
-	"formula_match":          flowNotImplemented("formula_match"),
-	"wolfram_verify":         flowNotImplemented("wolfram_verify"),
-	"lean_diff_mathlib":      flowNotImplemented("lean_diff_mathlib"),
+	"lean_sorry_scan":          flowLeanSorryScan,
+	"lean_float_scan":          flowLeanFloatScan,
+	"lean_file_interconnect":   flowLeanFileInterconnect,
+	"lean_db_health":           flowLeanDBHealth,
+	"quick_proof_report":       flowQuickProofReport,
+	"lean_proof_audit":         flowLeanProofAudit,
+	"lean_millennium_paths":    flowLeanMillenniumPaths,
+	"lean_cohesion_ranking":    flowLeanCohesionRanking,
+	"torchlean_tensor_extract": flowTorchLeanTensorExtract,
+	"tph_inference":            flowTPHInference,
+	"tph_status":               flowTPHStatus,
+	"env_check":                flowEnvCheck,
+	"gpu_check":                flowGPUCheck,
+	"formula_match":            flowNotImplemented("formula_match"),
+	"wolfram_verify":           flowNotImplemented("wolfram_verify"),
+	"lean_diff_mathlib":        flowNotImplemented("lean_diff_mathlib"),
 }
 
 // Placeholder flows that are not yet implemented
@@ -272,13 +299,8 @@ func initForumDB() error {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// Seed flow definitions if empty
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM flow_definitions").Scan(&count)
-	if count == 0 {
-		if err := seedFlowDefinitions(db); err != nil {
-			return fmt.Errorf("failed to seed flows: %w", err)
-		}
+	if err := seedFlowDefinitions(db); err != nil {
+		return fmt.Errorf("failed to sync flow definitions: %w", err)
 	}
 
 	log.Println("✅ Forum database initialized at", forumDBPath)
@@ -373,9 +395,45 @@ func seedFlowDefinitions(db *sql.DB) error {
 			Enabled:      true,
 			Tags:         []string{"lean", "proof", "report", "summary"},
 		},
+		{
+			Name:         "lean_proof_audit",
+			Description:  "Audit Lean proof map: compare actual imports vs documented",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"report_type":{"type":"string","description":"Type of audit report: summary (counts only) or full (includes mismatches)","default":"summary","enum":["summary","full"]}}}`),
+			Enabled:      true,
+			Tags:         []string{"lean", "audit", "imports", "proof-map"},
+		},
+		{
+			Name:         "lean_millennium_paths",
+			Description:  "Analyze dependency paths to Millennium.lean",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"target":{"type":"string","description":"Target module (default: Millennium.lean)","default":"Millennium.lean"}}}`),
+			Enabled:      true,
+			Tags:         []string{"lean", "dependencies", "paths", "millennium"},
+		},
+		{
+			Name:         "lean_cohesion_ranking",
+			Description:  "Rank modules by cohesion score (imports + dependents + drift)",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Number of top modules to return","default":15,"minimum":1,"maximum":100}}}`),
+			Enabled:      true,
+			Tags:         []string{"lean", "cohesion", "ranking", "audit"},
+		},
+		{
+			Name:         "torchlean_tensor_extract",
+			Description:  "Static TorchLean tensor extraction readiness for TensorExtractedBiasProfile",
+			ParamsSchema: json.RawMessage(`{"type":"object","properties":{"project_root":{"type":"string","description":"Lean project root to inspect","default":""},"artifact_root":{"type":"string","description":"Optional artifact root to scan for tensor files","default":""},"max_artifacts":{"type":"integer","description":"Maximum artifact records to include","default":50,"minimum":1,"maximum":500}}}`),
+			Enabled:      true,
+			Tags:         []string{"lean", "torchlean", "tensor", "audit", "static"},
+		},
 	}
 
-	stmt, err := db.Prepare(`INSERT INTO flow_definitions (name, description, params_schema, enabled, tags) VALUES (?, ?, ?, ?, ?)`)
+	stmt, err := db.Prepare(`
+		INSERT INTO flow_definitions (name, description, params_schema, enabled, tags)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			description = excluded.description,
+			params_schema = excluded.params_schema,
+			enabled = excluded.enabled,
+			tags = excluded.tags
+	`)
 	if err != nil {
 		return err
 	}
@@ -444,6 +502,12 @@ func handleRunFlow(w http.ResponseWriter, r *http.Request) {
 	// Parse input — SECURITY FIX: limit request body to 1 MB before decoding
 	var input FlowInput
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1*1024*1024)).Decode(&input); err != nil {
+		input.Input = map[string]interface{}{}
+	}
+	if input.Input == nil {
+		input.Input = input.Params
+	}
+	if input.Input == nil {
 		input.Input = map[string]interface{}{}
 	}
 
@@ -612,7 +676,7 @@ func flowLeanFloatScan(ctx context.Context, params map[string]interface{}, w htt
 	defer resp.Body.Close()
 
 	output, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
-	sendFlowLog(w, flusher, "info", fmt.Sprintf("Found floating symbols results"))
+	sendFlowLog(w, flusher, "info", "Found floating symbols results")
 
 	return json.RawMessage(output), "success", ""
 }
@@ -872,6 +936,550 @@ func flowGPUCheck(ctx context.Context, params map[string]interface{}, w http.Res
 	sendFlowLog(w, flusher, "info", "GPU check complete")
 
 	return resultJSON, "success", ""
+}
+
+func runLeanAuditPython(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, command string, args ...string) (json.RawMessage, string, string) {
+	toolRoot, err := findLeanAuditToolRoot()
+	if err != nil {
+		errorMsg := err.Error()
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    command,
+			"error":   errorMsg,
+			"command": append([]string{"python3"}, args...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+	auditRoot := findLeanAuditDataRoot(toolRoot)
+
+	scriptPath := filepath.Join(toolRoot, "tools", "lean_proof_audit.py")
+	cmdArgs := append([]string{scriptPath, command}, args...)
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Running Python audit command from %s: python3 %s %s", auditRoot, scriptPath, strings.Join(append([]string{command}, args...), " ")))
+
+	cmd := exec.CommandContext(ctx, "python3", cmdArgs...)
+	cmd.Dir = auditRoot
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+
+	stdout := strings.TrimSpace(stdoutBuf.String())
+	stderr := strings.TrimSpace(stderrBuf.String())
+
+	if stdout != "" {
+		for _, line := range strings.Split(stdout, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				sendFlowLog(w, flusher, "stdout", line)
+			}
+		}
+	}
+	if stderr != "" {
+		for _, line := range strings.Split(stderr, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				sendFlowLog(w, flusher, "stderr", line)
+			}
+		}
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		errorMsg := fmt.Sprintf("Lean audit flow timed out after %ds", flowTimeoutSec)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    command,
+			"error":   errorMsg,
+			"stdout":  stdout,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "timeout", errorMsg
+	}
+
+	if err != nil {
+		errorMsg := fmt.Sprintf("Lean audit command failed: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":       command,
+			"error":      errorMsg,
+			"stdout":     stdout,
+			"stderr":     stderr,
+			"exit_error": err.Error(),
+			"command":    append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	if stdout == "" {
+		errorMsg := "Lean audit command returned empty stdout"
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    command,
+			"error":   errorMsg,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		errorMsg := fmt.Sprintf("Lean audit command returned invalid JSON: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    command,
+			"error":   errorMsg,
+			"stdout":  stdout,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	resultJSON, _ := json.Marshal(parsed)
+	sendFlowLog(w, flusher, "info", "Lean audit command completed successfully")
+	return resultJSON, "success", ""
+}
+
+func auditFastAPIEnabled() bool {
+	return auditUseFastAPI
+}
+
+func cloneFlowParams(params map[string]interface{}) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(params)+1)
+	for key, value := range params {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func appendOptionalStringArg(cmdArgs []string, params map[string]interface{}, paramName string, flagName string) []string {
+	rawValue, ok := params[paramName]
+	if !ok {
+		return cmdArgs
+	}
+	textValue := strings.TrimSpace(fmt.Sprint(rawValue))
+	if textValue == "" || textValue == "<nil>" {
+		return cmdArgs
+	}
+	return append(cmdArgs, flagName, textValue)
+}
+
+func positiveIntParam(params map[string]interface{}, paramName string, defaultValue int, maxValue int) int {
+	result := defaultValue
+	if rawValue, ok := params[paramName]; ok {
+		switch typedValue := rawValue.(type) {
+		case float64:
+			result = int(typedValue)
+		case int:
+			result = typedValue
+		case string:
+			fmt.Sscanf(strings.TrimSpace(typedValue), "%d", &result)
+		}
+	}
+	if result < 1 {
+		result = 1
+	}
+	if maxValue > 0 && result > maxValue {
+		result = maxValue
+	}
+	return result
+}
+
+func runTorchLeanTensorExtractPython(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, params map[string]interface{}) (json.RawMessage, string, string) {
+	toolRoot, err := findLeanAuditToolRoot()
+	if err != nil {
+		errorMsg := err.Error()
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":  "torchlean_tensor_extract",
+			"error": errorMsg,
+		})
+		return resultJSON, "error", errorMsg
+	}
+	auditRoot := findLeanAuditDataRoot(toolRoot)
+
+	scriptPath := filepath.Join(toolRoot, "tools", "torchlean_tensor_extract.py")
+	cmdArgs := []string{scriptPath, "--max-artifacts", fmt.Sprintf("%d", positiveIntParam(params, "max_artifacts", 50, 500))}
+	cmdArgs = appendOptionalStringArg(cmdArgs, params, "project_root", "--project-root")
+	cmdArgs = appendOptionalStringArg(cmdArgs, params, "artifact_root", "--artifact-root")
+
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Running TorchLean tensor static extract from %s", auditRoot))
+	cmd := exec.CommandContext(ctx, "python3", cmdArgs...)
+	cmd.Dir = auditRoot
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+
+	stdout := strings.TrimSpace(stdoutBuf.String())
+	stderr := strings.TrimSpace(stderrBuf.String())
+	if stderr != "" {
+		for _, line := range strings.Split(stderr, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				sendFlowLog(w, flusher, "stderr", line)
+			}
+		}
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		errorMsg := fmt.Sprintf("TorchLean tensor extract flow timed out after %ds", flowTimeoutSec)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    "torchlean_tensor_extract",
+			"error":   errorMsg,
+			"stdout":  stdout,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "timeout", errorMsg
+	}
+
+	if err != nil {
+		errorMsg := fmt.Sprintf("TorchLean tensor extract command failed: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":       "torchlean_tensor_extract",
+			"error":      errorMsg,
+			"stdout":     stdout,
+			"stderr":     stderr,
+			"exit_error": err.Error(),
+			"command":    append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	if stdout == "" {
+		errorMsg := "TorchLean tensor extract returned empty stdout"
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    "torchlean_tensor_extract",
+			"error":   errorMsg,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		errorMsg := fmt.Sprintf("TorchLean tensor extract returned invalid JSON: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":    "torchlean_tensor_extract",
+			"error":   errorMsg,
+			"stdout":  stdout,
+			"stderr":  stderr,
+			"command": append([]string{"python3"}, cmdArgs...),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	resultJSON, _ := json.Marshal(parsed)
+	sendFlowLog(w, flusher, "info", "TorchLean tensor static extract completed successfully")
+	return resultJSON, "success", ""
+}
+
+func runLeanAuditFastAPI(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, flowName string, params map[string]interface{}) (json.RawMessage, string, string) {
+	if auditFastAPIBaseURL == "" {
+		errorMsg := "LEAN4A_AUDIT_USE_FASTAPI is enabled but LEAN4A_AUDIT_FASTAPI_BASE_URL is empty"
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":  flowName,
+			"error": errorMsg,
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		errorMsg := fmt.Sprintf("failed to marshal audit params: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":   flowName,
+			"error":  errorMsg,
+			"params": params,
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	endpoint, err := url.Parse(auditFastAPIBaseURL + "/api/v1/audit/execute")
+	if err != nil {
+		errorMsg := fmt.Sprintf("invalid FastAPI audit base URL %q: %v", auditFastAPIBaseURL, err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":  flowName,
+			"error": errorMsg,
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	query := endpoint.Query()
+	query.Set("flow_name", flowName)
+	query.Set("params", string(paramsJSON))
+	endpoint.RawQuery = query.Encode()
+
+	sendFlowLog(w, flusher, "info", fmt.Sprintf("Proxying audit flow to FastAPI: %s", flowName))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
+	if err != nil {
+		errorMsg := fmt.Sprintf("failed to build FastAPI audit request: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":  flowName,
+			"error": errorMsg,
+		})
+		return resultJSON, "error", errorMsg
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		errorMsg := fmt.Sprintf("FastAPI audit request failed: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":   flowName,
+			"error":  errorMsg,
+			"params": params,
+		})
+		return resultJSON, "error", errorMsg
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024*1024))
+	if err != nil {
+		errorMsg := fmt.Sprintf("failed to read FastAPI audit response: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":  flowName,
+			"error": errorMsg,
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		errorMsg := fmt.Sprintf("FastAPI audit execute returned HTTP %d: %s", resp.StatusCode, truncateForLog(string(body), 512))
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":        flowName,
+			"error":       errorMsg,
+			"params":      params,
+			"status_code": resp.StatusCode,
+			"response":    string(body),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	var parsed interface{}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		errorMsg := fmt.Sprintf("FastAPI audit response returned invalid JSON: %v", err)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"flow":     flowName,
+			"error":    errorMsg,
+			"response": string(body),
+		})
+		return resultJSON, "error", errorMsg
+	}
+
+	if parsedMap, ok := parsed.(map[string]interface{}); ok {
+		if statusText, ok := parsedMap["status"].(string); ok && statusText != "ok" {
+			errorMsg := fmt.Sprintf("FastAPI audit flow returned status %q", statusText)
+			sendFlowLog(w, flusher, "error", errorMsg)
+			resultJSON, _ := json.Marshal(parsed)
+			return resultJSON, "error", errorMsg
+		}
+		if ticket, ok := parsedMap["ticket"].(map[string]interface{}); ok {
+			if ticketID, ok := ticket["ticket_id"].(string); ok && ticketID != "" {
+				sendFlowLog(w, flusher, "info", fmt.Sprintf("FastAPI persisted audit ticket: %s", ticketID))
+			}
+		}
+	}
+
+	resultJSON, _ := json.Marshal(parsed)
+	sendFlowLog(w, flusher, "info", "FastAPI audit flow completed successfully")
+	return resultJSON, "success", ""
+}
+
+func truncateForLog(value string, maxLen int) string {
+	if len(value) <= maxLen {
+		return value
+	}
+	if maxLen <= 3 {
+		return value[:maxLen]
+	}
+	return value[:maxLen-3] + "..."
+}
+
+func flowLeanProofAudit(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	reportType := "summary"
+	if raw, ok := params["report_type"]; ok {
+		reportType = strings.TrimSpace(fmt.Sprint(raw))
+	}
+
+	switch reportType {
+	case "summary":
+		if auditFastAPIEnabled() {
+			flowParams := cloneFlowParams(params)
+			flowParams["report_type"] = reportType
+			return runLeanAuditFastAPI(ctx, w, flusher, "lean_proof_audit", flowParams)
+		}
+		return runLeanAuditPython(ctx, w, flusher, "audit-summary")
+	case "full":
+		if auditFastAPIEnabled() {
+			flowParams := cloneFlowParams(params)
+			flowParams["report_type"] = reportType
+			return runLeanAuditFastAPI(ctx, w, flusher, "lean_proof_audit", flowParams)
+		}
+		return runLeanAuditPython(ctx, w, flusher, "audit-full")
+	default:
+		errorMsg := fmt.Sprintf("invalid report_type %q", reportType)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"error":       errorMsg,
+			"report_type": reportType,
+		})
+		return resultJSON, "error", errorMsg
+	}
+}
+
+func flowLeanMillenniumPaths(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	target := "Millennium.lean"
+	if raw, ok := params["target"]; ok {
+		if text := strings.TrimSpace(fmt.Sprint(raw)); text != "" {
+			target = text
+		}
+	}
+	if auditFastAPIEnabled() {
+		flowParams := cloneFlowParams(params)
+		flowParams["target"] = target
+		return runLeanAuditFastAPI(ctx, w, flusher, "lean_millennium_paths", flowParams)
+	}
+	return runLeanAuditPython(ctx, w, flusher, "millennium-path", target)
+}
+
+func flowLeanCohesionRanking(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	limit := 15
+	if raw, ok := params["limit"]; ok {
+		switch v := raw.(type) {
+		case float64:
+			limit = int(v)
+		case int:
+			limit = v
+		case string:
+			fmt.Sscanf(v, "%d", &limit)
+		}
+	}
+	if limit <= 0 {
+		errorMsg := fmt.Sprintf("invalid limit %d", limit)
+		sendFlowLog(w, flusher, "error", errorMsg)
+		resultJSON, _ := json.Marshal(map[string]interface{}{
+			"error": errorMsg,
+			"limit": limit,
+		})
+		return resultJSON, "error", errorMsg
+	}
+	if auditFastAPIEnabled() {
+		flowParams := cloneFlowParams(params)
+		flowParams["limit"] = limit
+		return runLeanAuditFastAPI(ctx, w, flusher, "lean_cohesion_ranking", flowParams)
+	}
+	return runLeanAuditPython(ctx, w, flusher, "cohesion-ranking", fmt.Sprintf("%d", limit))
+}
+
+func flowTorchLeanTensorExtract(ctx context.Context, params map[string]interface{}, w http.ResponseWriter, flusher http.Flusher) (json.RawMessage, string, string) {
+	flowParams := cloneFlowParams(params)
+	flowParams["max_artifacts"] = positiveIntParam(params, "max_artifacts", 50, 500)
+	if auditFastAPIEnabled() {
+		return runLeanAuditFastAPI(ctx, w, flusher, "torchlean_tensor_extract", flowParams)
+	}
+	return runTorchLeanTensorExtractPython(ctx, w, flusher, flowParams)
+}
+
+func findLeanAuditToolRoot() (string, error) {
+	for _, envKey := range []string{"LEAN4A_TOOL_ROOT", "LEAN4A_PROJECT_ROOT"} {
+		if envRoot := strings.TrimSpace(os.Getenv(envKey)); envRoot != "" {
+			if hasLeanAuditToolRoot(envRoot) {
+				return envRoot, nil
+			}
+			return "", fmt.Errorf("%s does not point to a Lean4-Automata tool root: %s", envKey, envRoot)
+		}
+	}
+
+	startDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	dir := startDir
+	for {
+		if hasLeanAuditToolRoot(dir) {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return "", fmt.Errorf("could not locate Lean4-Automata repo root from %s", startDir)
+}
+
+func findLeanAuditDataRoot(toolRoot string) string {
+	for _, envKey := range []string{"LEAN4A_AUDIT_ROOT", "LEAN4A_PROOF_ROOT", "LEAN4A_PROJECT_ROOT"} {
+		if envRoot := strings.TrimSpace(os.Getenv(envKey)); envRoot != "" && hasLeanAuditDataRoot(envRoot) {
+			return envRoot
+		}
+	}
+
+	for dir := toolRoot; ; dir = filepath.Dir(dir) {
+		if hasLeanAuditDataRoot(dir) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+
+	if startDir, err := os.Getwd(); err == nil {
+		for dir := startDir; ; dir = filepath.Dir(dir) {
+			if hasLeanAuditDataRoot(dir) {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+		}
+	}
+
+	return toolRoot
+}
+
+func hasLeanAuditToolRoot(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "tools", "lean_proof_audit.py")); err != nil {
+		return false
+	}
+	return true
+}
+
+func hasLeanAuditDataRoot(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "Lean_Proof_Map.txt")); err != nil {
+		return false
+	}
+	if info, err := os.Stat(filepath.Join(dir, "src")); err != nil || !info.IsDir() {
+		return false
+	}
+	return true
 }
 
 // flowTPHInference executes inference on the TPH GPU server
@@ -1587,11 +2195,6 @@ func handleLLMContext(w http.ResponseWriter, r *http.Request) {
 // ============================================================================
 
 func registerForumRoutes() {
-	// Initialize database
-	if err := initForumDB(); err != nil {
-		log.Fatalf("Failed to initialize forum database: %v", err)
-	}
-
 	// Register routes
 	http.HandleFunc("/flows", handleGetFlows)
 	http.HandleFunc("/run/flow/", handleRunFlow)

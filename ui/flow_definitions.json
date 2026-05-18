@@ -203,6 +203,106 @@
       "command_template": "python3 -c \"\nimport requests\nimport json\n\ntry:\n    # Get proof status summary\n    resp = requests.get('http://localhost:8000/query', json={\n        'query': '''\n            SELECT \n                COUNT(*) as total_files,\n                SUM(sorry_count) as total_sorries,\n                SUM(CASE WHEN sorry_count = 0 THEN 1 ELSE 0 END) as complete_files,\n                AVG(sorry_count) as avg_sorries_per_file\n            FROM v_proof_status\n        '''\n    })\n    \n    result = {\n        'summary': resp.json(),\n        'top_sorry_files': [],\n        'timestamp': __import__('datetime').datetime.now().isoformat()\n    }\n    \n    # Get top 10 files with most sorries\n    resp2 = requests.get('http://localhost:8000/query', json={\n        'query': 'SELECT file_path, sorry_count FROM v_proof_status WHERE sorry_count > 0 ORDER BY sorry_count DESC LIMIT 10'\n    })\n    result['top_sorry_files'] = resp2.json()\n    \n    print(json.dumps(result, indent=2))\nexcept Exception as e:\n    print(json.dumps({'error': str(e)}, indent=2))\n\"",
       "enabled": true,
       "tags": ["lean", "proof", "report", "summary"]
+    },
+    {
+      "name": "lean_proof_audit",
+      "description": "Audit Lean proof map (summary by default)",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "description": "Type of audit report: summary (counts only) or full (includes mismatches)",
+            "default": "summary",
+            "enum": ["summary", "full"]
+          }
+        }
+      },
+      "handler_type": "subprocess",
+      "command_template": "cd $PROJECT_ROOT && python3 Lean4-Automata/tools/lean_proof_audit.py audit-$REPORT_TYPE 2>&1",
+      "enabled": true,
+      "tags": ["lean", "audit", "imports", "proof-map"]
+    },
+    {
+      "name": "lean_millennium_paths",
+      "description": "Analyze dependency paths to Millennium.lean",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target module (default: Millennium.lean)",
+            "default": "Millennium.lean"
+          }
+        }
+      },
+      "handler_type": "subprocess",
+      "command_template": "cd $PROJECT_ROOT && python3 Lean4-Automata/tools/lean_proof_audit.py millennium-path 2>&1",
+      "enabled": true,
+      "tags": ["lean", "dependencies", "paths", "millennium"]
+    },
+    {
+      "name": "lean_cohesion_ranking",
+      "description": "Rank modules by cohesion score (top 15 by default)",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Number of top modules to return",
+            "default": 15,
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "handler_type": "subprocess",
+      "command_template": "cd $PROJECT_ROOT && python3 Lean4-Automata/tools/lean_proof_audit.py cohesion-ranking 2>&1",
+      "enabled": true,
+      "tags": ["lean", "ranking", "cohesion", "metrics"]
+    },
+    {
+      "name": "lean_proof_edit_guard",
+      "description": "Guard Lean proof edits by classifying git diff risk and lake build diagnostics",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "diff_file": {
+            "type": "string",
+            "description": "Optional unified diff file to analyze; defaults to current tracked Lean git diff",
+            "default": ""
+          },
+          "build_log_file": {
+            "type": "string",
+            "description": "Optional lake build log file to classify",
+            "default": ""
+          },
+          "build_returncode": {
+            "type": "integer",
+            "description": "Return code associated with build_log_file",
+            "default": 0
+          },
+          "run_build": {
+            "type": "boolean",
+            "description": "Run the build command and classify its output",
+            "default": false
+          },
+          "build_command": {
+            "type": "string",
+            "description": "Build command used when run_build is true",
+            "default": "lake build"
+          },
+          "backup_path": {
+            "type": "string",
+            "description": "Backup archive or directory associated with the edit",
+            "default": ""
+          }
+        }
+      },
+      "handler_type": "subprocess",
+      "command_template": "cd $PROJECT_ROOT && python3 Lean4-Automata/tools/forum_handlers.py lean_proof_edit_guard '{}' 2>&1",
+      "enabled": true,
+      "tags": ["lean", "proof-edit", "diff", "build", "rollback"]
     }
   ],
   "metadata": {

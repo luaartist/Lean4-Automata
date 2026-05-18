@@ -18,8 +18,18 @@ export function Sidebar({ isOpen }: SidebarProps) {
     <aside className="w-[240px] bg-bg-surface border-r border-border overflow-y-auto">
       <nav className="p-16">
         <div className="mb-24">
-          <h2 className="text-sm font-medium text-text-secondary mb-8">Projects</h2>
+          <h2 className="text-sm font-medium text-text-secondary mb-8">Workspace</h2>
           <ul className="space-y-4">
+            <li>
+              <Link
+                href="/"
+                className={`block px-12 py-8 rounded hover:bg-bg-secondary ${
+                  pathname === '/' ? 'bg-accent-primary text-white' : ''
+                }`}
+              >
+                Proof Observatory
+              </Link>
+            </li>
             <li>
               <Link
                 href="/projects/1"
@@ -27,14 +37,14 @@ export function Sidebar({ isOpen }: SidebarProps) {
                   pathname?.startsWith('/projects/1') ? 'bg-accent-primary text-white' : ''
                 }`}
               >
-                Project 1
+                Current Lean Project
               </Link>
             </li>
           </ul>
         </div>
 
         <div>
-          <h2 className="text-sm font-medium text-text-secondary mb-8">Navigation</h2>
+          <h2 className="text-sm font-medium text-text-secondary mb-8">Tools</h2>
           <ul className="space-y-4">
             <li>
               <Link
@@ -43,7 +53,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
                   pathname === '/search' ? 'bg-accent-primary text-white' : ''
                 }`}
               >
-                Search
+                Symbol Search
               </Link>
             </li>
             <li>

@@ -19,7 +19,9 @@ export default function ProjectPage({ params }: { params: { name: string } }) {
         ]}
       />
 
-      <h1 className="text-2xl font-bold mt-24 mb-16">Project Overview</h1>
+      <h1 className="text-2xl font-bold mt-24 mb-16">
+        Current Lean Project
+      </h1>
 
       {isLoading && <Loading />}
       {error && (

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lean4-Automata: Local Lean 4 Proof Observatory</title>
+  <meta name="description" content="Explore Lean 4 projects locally with import graphs, symbol search, proof completion views, audit tickets, optional Wolfram companion maps, and evidence badges.">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="index.html" aria-label="Lean4-Automata home">
+        <strong>Lean4-Automata</strong>
+        <span>Local proof observatory</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#observatory">Observatory</a>
+        <a href="#workflows">Workflows</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#packaging">Packaging</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="observatory">
+      <div>
+        <p class="eyebrow">Lean 4 proof observability</p>
+        <h1>Lean4-Automata</h1>
+        <p class="lead">A local proof observatory for Lean 4 projects. Map imports, search symbols, track proof completion, record audit tickets, and preserve evidence badges for work that should remain inspectable over time.</p>
+        <div class="actions" aria-label="Key links">
+          <a class="button primary" href="#workflows">Explore workflows</a>
+          <a class="button" href="#evidence">Read the trust model</a>
+          <a class="button" href="#packaging">Review packaging</a>
+        </div>
+        <div class="metrics" aria-label="Current package facts">
+          <div class="metric"><strong>Lean 4</strong><span>Source, imports, symbols</span></div>
+          <div class="metric"><strong>Audit</strong><span>Tickets and obligations</span></div>
+          <div class="metric"><strong>L2BL4</strong><span>Keepsake and public evidence</span></div>
+          <div class="metric"><strong>Offline</strong><span>No-CDN public pages</span></div>
+        </div>
+      </div>
+      <div class="visual">
+        <img src="assets/lean4a-proof-map.svg" alt="Schematic of Lean source, import graph, audit ticket, and evidence badge records">
+      </div>
+    </section>
+
+    <section class="section" id="workflows">
+      <h2>Proof Workflows, Not Bright Distraction</h2>
+      <p class="section-intro">Lean4-Automata is designed for long-lived proof maintenance. It gives researchers and maintainers a structured way to inspect a Lean project before refactoring, publication, packaging, or evidence issuance.</p>
+      <div class="tab-list" role="tablist" aria-label="Lean4-Automata capabilities">
+        <button class="tab-button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+        <button class="tab-button" role="tab" id="tab-foundations" aria-controls="panel-foundations" aria-selected="false" tabindex="-1">Foundations</button>
+        <button class="tab-button" role="tab" id="tab-mapping" aria-controls="panel-mapping" aria-selected="false" tabindex="-1">Lean Mapping</button>
+        <button class="tab-button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" tabindex="-1">Audit Flows</button>
+        <button class="tab-button" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">Evidence</button>
+        <button class="tab-button" role="tab" id="tab-packaging" aria-controls="panel-packaging" aria-selected="false" tabindex="-1">Packaging</button>
+      </div>
+
+      <div id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Local Observatory</h3><p>Inspect Lean source, imports, symbols, theorem status, audit notes, and evidence records from one project-centered surface.</p></article>
+          <article class="artifact-card"><h3>Generic Proof Targets</h3><p>Start with two questions: what are you proving, and what should the main Lean target be?</p></article>
+          <article class="artifact-card"><h3>Durable Keepsakes</h3><p>Preserve audit outputs as project memory without confusing keepsake records with public certification.</p></article>
+        </div>
+      </div>
+
+      <div id="panel-foundations" class="tab-panel" role="tabpanel" aria-labelledby="tab-foundations" hidden>
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Lean First</h3><p>The Lean toolchain, source files, and accepted declarations remain the authority for formal proof state.</p></article>
+          <article class="artifact-card"><h3>Project Structure</h3><p>Files, imports, Mathlib references, and external repositories become a navigable project model.</p></article>
+          <article class="artifact-card"><h3>Clear Boundaries</h3><p>Audit summaries and optional companion maps support review. They do not replace Lean verification.</p></article>
+        </div>
+      </div>
+
+      <div id="panel-mapping" class="tab-panel" role="tabpanel" aria-labelledby="tab-mapping" hidden>
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Import Graph</h3><p>Follow direct and external imports before planning refactors or publication packaging.</p></article>
+          <article class="artifact-card"><h3>Symbol Atlas</h3><p>Search names, declarations, modules, and theorem references from indexed project data.</p></article>
+          <article class="artifact-card"><h3>Wolfram Companions</h3><p>Optional maps can help visualize formulas and structure, but they stay out of the formal proof chain.</p></article>
+        </div>
+      </div>
+
+      <div id="panel-audit" class="tab-panel" role="tabpanel" aria-labelledby="tab-audit" hidden>
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Audit Tickets</h3><p>Each audit run can record input, output, duration, status, and review context in a stable ticket shape.</p></article>
+          <article class="artifact-card"><h3>Obligations</h3><p>Sorries, admits, axioms, import drift, and map gaps become inspectable work items.</p></article>
+          <article class="artifact-card"><h3>Readable Output</h3><p>Plain sectioned summaries sit beside JSON so humans and tools can read the same evidence.</p></article>
+        </div>
+      </div>
+
+      <div id="panel-evidence" class="tab-panel" role="tabpanel" aria-labelledby="tab-evidence" hidden>
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Keepsake</h3><p>A successful local audit output saved as project memory. It is not a public timestamp attestation.</p></article>
+          <article class="artifact-card"><h3>Public</h3><p>Audit success plus confirmed OpenTimestamps evidence and matching obligation counts.</p></article>
+          <article class="artifact-card"><h3>Sovereign</h3><p>A public badge plus composite signature hash, subject to an explicit issuer policy.</p></article>
+        </div>
+      </div>
+
+      <div id="panel-packaging" class="tab-panel" role="tabpanel" aria-labelledby="tab-packaging" hidden>
+        <div class="panel-grid">
+          <article class="artifact-card"><h3>Static HTML/CSS</h3><p>The public page opens from disk and uses no remote CDN or private backend.</p></article>
+          <article class="artifact-card"><h3>Hugging Face app.py</h3><p>A read-only Space preview can explain the project and surface artifact links.</p></article>
+          <article class="artifact-card"><h3>Internal HTML</h3><p>Operator dashboards stay local and offline-capable, separate from public claims.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="evidence">
+      <h2>Trust Model</h2>
+      <p class="section-intro">Lean4-Automata separates formal proof from supporting evidence. It makes proof-adjacent records visible without claiming that a dashboard, badge, or timestamp proves mathematics by itself.</p>
+      <div class="table-scroll" role="region" aria-label="Trust model table" tabindex="0">
+        <table class="boundary-table">
+          <thead><tr><th>Artifact</th><th>What it can mean</th><th>What it must not claim</th></tr></thead>
+          <tbody>
+            <tr><td>Lean build</td><td>Lean accepted a project under a specific toolchain.</td><td>External peer review or publication acceptance.</td></tr>
+            <tr><td>Audit ticket</td><td>A named flow ran and produced structured output.</td><td>Every finding is resolved.</td></tr>
+            <tr><td>OTS stamp</td><td>A digest existed no later than a confirmed Bitcoin block.</td><td>Correctness, authorship, or mathematical truth.</td></tr>
+            <tr><td>L2BL4 badge</td><td>The stored evidence contract currently passes for its class.</td><td>A replacement for Lean verification.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="fine-print">Wolfram companion maps are optional navigation and analysis aids. They may help visualize formulas, imports, or research structure, but they are not the source of formal truth.</p>
+    </section>
+
+    <section class="section" id="packaging">
+      <h2>Packaging Surfaces</h2>
+      <p class="section-intro">The package now separates public presentation, static portability, Hugging Face preview, and internal operator tools.</p>
+      <div class="artifact-grid">
+        <article class="artifact-card"><h3>Next Frontend</h3><p>Live project overview and workbench entry for local deployments.</p><code>frontend/app</code></article>
+        <article class="artifact-card"><h3>Static Public Page</h3><p>This page can be opened directly from the filesystem or static hosting.</p><code>public/index.html</code></article>
+        <article class="artifact-card"><h3>Offline Internal Dashboard</h3><p>Local artifact navigation for maintainers outside the public web root.</p><code>ui/offline_internal.html</code></article>
+        <article class="artifact-card"><h3>Hugging Face Preview</h3><p>app.py provides a read-only Space-compatible presentation surface.</p><code>app.py</code></article>
+        <article class="artifact-card"><h3>Design Schema</h3><p>The design contract records tabs, trust boundaries, and backup discipline.</p><code>docs/public-face-design-schema.md</code></article>
+        <article class="artifact-card"><h3>Database Contract</h3><p>L2BL4 evidence rules live in the schema, not in presentation copy.</p><code>README_DATABASE.md</code></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p>Lean4-Automata records proof structure and evidence context. Lean remains the proof authority. Public badge and timestamp language should be read through the documented evidence contract.</p>
+      <p>Last packaging pass: 2026-05-15. Static page uses local CSS, local JavaScript, and no remote assets.</p>
+    </div>
+  </footer>
+  <script src="assets/lean4-automata.js"></script>
+</body>
+</html>

@@ -44,6 +44,11 @@ from parser.lean_parser import (
     parse_file,
 )
 from parser.scanner import _module_name_for, _normalise_psycopg_dsn
+from tools.mapping_backfill import (
+    ImportSource,
+    collect_lake_package_prefixes,
+    replace_external_import_references,
+)
 
 log = logging.getLogger(__name__)
 
@@ -353,6 +358,24 @@ class LeanFileHandler(FileSystemEventHandler):
                             """,
                             edges_f,
                         )
+                else:
+                    module_to_file_id = {}
+
+                replace_external_import_references(
+                    cur,
+                    project_id=self.project_id,
+                    import_sources=[
+                        ImportSource(
+                            file_id=file_id,
+                            module_name=module,
+                            relative_path=rel,
+                            imports=tuple(parsed.imports),
+                        )
+                    ],
+                    module_to_file_id=module_to_file_id,
+                    package_prefixes=collect_lake_package_prefixes(self.root_dir),
+                    provenance="watcher.incremental",
+                )
 
                 # Rebuild symbol-to-symbol dependency edges (textual approximation
                 # mirroring scanner phase 4).

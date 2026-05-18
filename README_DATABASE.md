@@ -13,7 +13,10 @@ Lean4-Automata/
 │   └── versions/            # Migration files
 │       ├── 0001_initial_schema.py
 │       ├── 0002_add_indexes.py
-│       └── 0003_materialized_views.py
+│       ├── 0003_materialized_views.py
+│       ├── 0004_enriched_metrics.py
+│       ├── 0005_mapping_audit_context.py
+│       └── 0006_l2bl4_evidence_contract.py
 ├── db/
 │   └── queries.py           # Query functions with recursive CTEs
 └── requirements/
@@ -22,7 +25,7 @@ Lean4-Automata/
 
 ## Prerequisites
 
-1. PostgreSQL 18.4 running (via docker-compose)
+1. PostgreSQL 17 running (via docker-compose)
 2. Python 3.10+
 3. DATABASE_URL environment variable set
 
@@ -90,6 +93,20 @@ alembic downgrade base
    - `dependency_stats`: Per-symbol centrality metrics (outgoing/incoming edges)
    - `module_metrics`: Per-module aggregations (symbol counts by kind, documentation coverage)
 
+4. **0004_enriched_metrics.py**
+   - Adds proof-completeness, fragility, symbol-breakdown, hygiene, and import-profile columns to `files`
+   - Adds `symbols.has_sorry`
+   - Adds views: `v_proof_status`, `v_floating_symbols`, `v_file_interconnect`
+
+5. **0005_mapping_audit_context.py**
+   - Adds external Lean import references, Wolfram companion maps, audit tickets, proof obligations, OTS stamps, and L2BL4 badge tables
+   - Adds views: `v_module_import_edges`, `v_module_json_lookup`, `v_cohesion_ranking`, `v_unresolved_obligations`
+
+6. **0006_l2bl4_evidence_contract.py**
+   - Adds L2BL4 contract fields: `ots_stamps.bitcoin_block`, `l2bl4_badges.badge_class`, `ots_stamp_id`, `composite_sig_hash`, and `contract_version`
+   - Adds views/functions: `v_l2bl4_ticket_evidence_contract`, `v_l2bl4_badge_validity`, `l2bl4_ticket_evidence_snapshot`, and `l2bl4_badge_contract_error`
+   - Adds an issuance trigger that validates `issued` badges while allowing draft badges and pending OTS stamps
+
 ## Schema Overview
 
 ### Core Tables
@@ -101,10 +118,52 @@ alembic downgrade base
 - **file_dependencies**: File-level import graph
 - **index_runs**: Indexing job tracking
 
+### Mapping and Audit Tables
+
+- **lean_import_references**: Mathlib, lake package, external repo, and unknown Lean imports that do not resolve to project-local `files`
+- **wolfram_companion_maps**: Parsed `../wolfram_lean_maps/*.wl` companion data keyed by Lean module
+- **audit_tickets**: Postgres home for ULID-shaped flow tickets (`tk_<ulid>`) currently produced by audit/forum flows
+- **proof_obligations**: Materialized unresolved obligations from sorries, admits, axioms, doc drift, import drift, and companion-map gaps
+- **ots_stamps**: Future OpenTimestamps attestations over modules, tickets, maps, or badge evidence; `bitcoin_block` is nullable so stamps can be pending before later confirmation
+- **l2bl4_badges**: Badge issuance records linked to evidence, tickets, optional OTS stamps, and one `badge_class` in `public`, `sovereign`, or `keepsake`
+
+### L2BL4 Evidence Contract
+
+The generic badge contract is project-agnostic and does not encode Yang-Mills, Millennium, or any current proof-flow name. Existing audit flows can still produce project-specific evidence inside `audit_tickets.output_json` and `l2bl4_badges.evidence`.
+
+`v_l2bl4_ticket_evidence_contract` exposes the per-ticket readiness check:
+
+- all badge classes require `audit_tickets.status = 'success'`
+- `public` additionally requires at least one `ots_stamps` row for the ticket, `ots_stamps.bitcoin_block IS NOT NULL`, and matching reported/row-oriented sorry obligation counts
+- `sovereign` has the same requirements as `public` plus `l2bl4_badges.composite_sig_hash IS NOT NULL`
+- `keepsake` requires only the successful audit ticket; the issuance trigger adds a `keepsake_unverified` marker to the stored evidence
+
+For the current schema, the sorry check is represented as `reported_sorry_gated_count` from `audit_tickets.output_json` compared to summed sorry-like `proof_obligations` rows linked by `ticket_id`. If no `sorry_gated` or `sorry_count` key is present, the count must be zero. Endpoint code should call `l2bl4_badge_contract_error(ticket_id, badge_class, composite_sig_hash)` before insert and can embed `l2bl4_ticket_evidence_snapshot(ticket_id)` in badge evidence.
+
+Optional Wolfram LLM synthesis enrichment is intentionally manual and out of
+band from the FastAPI audit routes. After `wolfram_companion_maps` has been
+backfilled, run:
+
+```bash
+python tools/wolfram_llm_synthesis.py --project-id 1 --limit 5
+```
+
+The tool writes structured results to `wolfram_companion_maps.llm_synthesis`.
+If `wolframscript` is missing, it prints a JSON `wolfram_unavailable` summary
+and exits without opening a database connection. Use `--dry-run` to list rows,
+`--module <module_name>` to target one map, and `--force` to reprocess populated
+rows.
+
 ### Materialized Views
 
 - **dependency_stats**: Symbol centrality and connection metrics
 - **module_metrics**: Module-level complexity and documentation metrics
+- **v_module_import_edges**: Union of project-local `file_dependencies` and external `lean_import_references`
+- **v_module_json_lookup**: One JSONB object per module for module detail endpoints and charts
+- **v_cohesion_ranking**: Module fan-in/fan-out, proof-health, Wolfram-map, and obligation ranking surface
+- **v_unresolved_obligations**: Open/acknowledged proof and mapping obligations
+- **v_l2bl4_ticket_evidence_contract**: Per-ticket L2BL4 audit, OTS, and obligation-count readiness
+- **v_l2bl4_badge_validity**: Per-badge current validity and contract status after issuance
 
 Refresh materialized views:
 ```sql

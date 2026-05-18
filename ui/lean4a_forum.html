@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lean4-Automata Forum — CLI Research Harness</title>
+    <title>Lean4-Automata Proof Verification Dashboard</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -132,6 +132,14 @@
         .flow-btn:hover {
             background: rgba(52, 152, 219, 0.4);
             transform: translateX(5px);
+        }
+
+        .flow-btn:focus-visible,
+        button:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
+            outline: 2px solid var(--accent-blue);
+            outline-offset: 2px;
         }
 
         .flow-btn:disabled {
@@ -268,6 +276,16 @@
             word-wrap: break-word;
             font-size: 0.8em;
             color: #ccc;
+        }
+
+        .ticket-summary {
+            margin-bottom: 12px;
+            color: #ddd;
+            line-height: 1.5;
+        }
+
+        .ticket-summary-section {
+            margin-bottom: 10px;
         }
 
         /* JSON Syntax Highlighting */
@@ -783,6 +801,15 @@
             background: rgba(52, 152, 219, 0.1);
             border-bottom-color: var(--accent-blue);
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.001ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -809,7 +836,7 @@
         <!-- API Connection Error Banner (hidden by default) -->
         <div id="api-error-banner" style="display: none; margin: 10px auto; max-width: 700px; padding: 12px; background: rgba(231, 76, 60, 0.2); border: 1px solid var(--error-red); border-radius: 8px; font-size: 0.9em;">
             <i class="fas fa-exclamation-triangle"></i>
-            <strong>⚠️ Cannot reach Go_Red API at :8443</strong><br>
+            <strong>Cannot reach Go_Red API at :8443</strong><br>
             <span style="font-size: 0.85em; color: #ccc;">
                 Start the server with: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">cd go && go run .</code>
             </span>
@@ -835,22 +862,22 @@
     <ul class="nav nav-tabs" style="padding: 0 20px; background: rgba(255,255,255,0.05);">
         <li class="nav-item">
             <button class="nav-link active" id="flows-tab" data-bs-toggle="tab" data-bs-target="#flows-panel" type="button">
-                🔄 Flows
+                <i class="fas fa-list"></i> Flows
             </button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="tickets-tab" data-bs-toggle="tab" data-bs-target="#tickets-panel" type="button">
-                🎫 Tickets
+                <i class="fas fa-receipt"></i> Tickets
             </button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="metrics-tab" data-bs-toggle="tab" data-bs-target="#metrics-panel" type="button">
-                📊 Metrics
+                <i class="fas fa-chart-simple"></i> Metrics
             </button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="agent-tab" data-bs-toggle="tab" data-bs-target="#agent-panel" type="button">
-                🤖 Debug Agent
+                <i class="fas fa-terminal"></i> Debug Agent
             </button>
         </li>
     </ul>
@@ -955,7 +982,7 @@
                 <div class="chat-panel">
                     <div class="chat-header">
                         <div class="chat-header-left">
-                            <span class="chat-title">🤖 Lean Debug Agent</span>
+                            <span class="chat-title">Lean Debug Agent</span>
                             <select id="model-selector" class="model-selector">
                                 <option value="">Loading models...</option>
                             </select>
@@ -1025,6 +1052,7 @@
         let eventSource = null;
         let autoRefreshInterval = null;
         let lastTicketIds = new Set();
+        let flowDefinitionsByName = new Map();
 
         // ====================================================================
         // Initialization
@@ -1091,6 +1119,7 @@
                 }
                 
                 const data = await resp.json();
+                setFlowDefinitions(data.flows || []);
                 renderFlows(data.flows || []);
                 
                 // Hide error banner if successful
@@ -1101,7 +1130,8 @@
                 // FIX 2: Show error banner
                 document.getElementById('api-error-banner').style.display = 'block';
                 
-                // FIX 6: Show static placeholder buttons for all 12 flows
+                // FIX 6: Show static placeholder buttons for all known flows
+                setFlowDefinitions([]);
                 renderStaticFlowButtons();
             }
         }
@@ -1116,7 +1146,10 @@
                     { name: 'lean_float_scan', desc: 'Floating symbols query', icon: 'ghost' },
                     { name: 'lean_file_interconnect', desc: 'File dependencies', icon: 'project-diagram' },
                     { name: 'lean_db_health', desc: 'Database health', icon: 'heartbeat' },
-                    { name: 'quick_proof_report', desc: 'Proof status report', icon: 'file-alt' }
+                    { name: 'quick_proof_report', desc: 'Proof status report', icon: 'file-alt' },
+                    { name: 'lean_proof_audit', desc: 'Proof map audit (summary)', icon: 'clipboard-list' },
+                    { name: 'lean_millennium_paths', desc: 'Millennium dependency paths', icon: 'route' },
+                    { name: 'lean_cohesion_ranking', desc: 'Module cohesion ranking', icon: 'chart-line' }
                 ],
                 'TPH GPU': [
                     { name: 'tph_inference', desc: 'TPH model inference', icon: 'brain' },
@@ -1150,6 +1183,27 @@
             html += '</div></div>';
             
             container.innerHTML = html;
+        }
+
+        function setFlowDefinitions(flows) {
+            flowDefinitionsByName = new Map((flows || []).map(flow => {
+                const paramsSchema = typeof flow.params_schema === 'string'
+                    ? safeParseJson(flow.params_schema, {})
+                    : (flow.params_schema || {});
+                return [flow.name, { ...flow, params_schema: paramsSchema }];
+            }));
+        }
+
+        function getDefaultFlowParams(flowName) {
+            const flow = flowDefinitionsByName.get(flowName);
+            const properties = flow?.params_schema?.properties || {};
+            const defaults = {};
+            for (const [key, config] of Object.entries(properties)) {
+                if (config && Object.prototype.hasOwnProperty.call(config, 'default')) {
+                    defaults[key] = config.default;
+                }
+            }
+            return defaults;
         }
 
         function renderFlows(flows) {
@@ -1213,6 +1267,9 @@
                 'lean_file_interconnect': 'project-diagram',
                 'lean_db_health': 'heartbeat',
                 'quick_proof_report': 'file-alt',
+                'lean_proof_audit': 'clipboard-list',
+                'lean_millennium_paths': 'route',
+                'lean_cohesion_ranking': 'chart-line',
                 'lean_diff_mathlib': 'code-branch',
                 'tph_inference': 'brain',
                 'tph_status': 'server',
@@ -1239,7 +1296,7 @@
             updateConnectionStatus(flowName, 'connected');
 
             clearLog();
-            logMessage('info', `▶ Starting flow: ${flowName}`);
+            logMessage('info', `[START] Flow: ${flowName}`);
 
             try {
                 // SECURITY FIX (Finding 7): EventSource is GET-only but server requires POST.
@@ -1247,11 +1304,11 @@
                 const resp = await fetch(`${API_BASE}/run/flow/${flowName}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-                    body: JSON.stringify({ params: {} }),
+                    body: JSON.stringify({ input: getDefaultFlowParams(flowName) }),
                 });
 
                 if (!resp.ok) {
-                    logMessage('error', `❌ Server returned ${resp.status}: ${resp.statusText}`);
+                    logMessage('error', `[ERROR] Server returned ${resp.status}: ${resp.statusText}`);
                     stopFlow(flowName);
                     return;
                 }
@@ -1284,14 +1341,14 @@
                             if (eventType === 'log') {
                                 logMessage(data.level || 'info', data.message || dataStr);
                             } else if (eventType === 'result') {
-                                logMessage('info', `✅ Flow completed. Ticket ID: ${data.ticket_id}`);
+                                logMessage('info', `[OK] Flow completed. Ticket ID: ${data.ticket_id}`);
                                 loadTickets();
                             } else if (eventType === 'done') {
-                                logMessage('info', `⏱ Duration: ${data.duration_ms}ms`);
+                                logMessage('info', `[DONE] Duration: ${data.duration_ms}ms`);
                                 stopFlow(flowName);
                                 return;
                             } else if (eventType === 'error') {
-                                logMessage('error', `❌ ${data.message || 'Flow error'}`);
+                                logMessage('error', `[FAIL] ${data.message || 'Flow error'}`);
                                 stopFlow(flowName);
                                 return;
                             }
@@ -1469,12 +1526,11 @@
                     
                     // FIX 5: JSON syntax highlighting
                     // output_json may be a string or already-parsed object
-                    const parsed = typeof ticket.output_json === 'string'
-                        ? JSON.parse(ticket.output_json)
-                        : ticket.output_json;
+                    const parsed = safeParseJson(ticket.output_json, ticket.output_json);
                     const outputJson = JSON.stringify(parsed, null, 2);
+                    const summaryHtml = formatTicketSummary(parsed);
                     const highlightedJson = syntaxHighlightJson(outputJson);
-                    content.innerHTML = `<pre>${highlightedJson}</pre>`;
+                    content.innerHTML = `${summaryHtml}<pre>${highlightedJson}</pre>`;
                     content.classList.add('show');
                     ticketItem.classList.add('expanded');
                 } catch (e) {
@@ -1494,6 +1550,19 @@
         }
 
         // FIX 5: Simple JSON syntax highlighting without external libraries
+        function safeParseJson(value, fallback = null) {
+            if (typeof value !== 'string') {
+                return value ?? fallback;
+            }
+
+            try {
+                return JSON.parse(value);
+            } catch (e) {
+                console.warn('Failed to parse JSON payload:', e);
+                return fallback;
+            }
+        }
+
         function syntaxHighlightJson(json) {
             json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
@@ -1511,6 +1580,91 @@
                 }
                 return '<span class="' + cls + '">' + match + '</span>';
             });
+        }
+
+        function formatTicketSummary(payload) {
+            const sections = summarizePayload(payload);
+            if (sections.length === 0) return '';
+
+            return `
+                <div class="ticket-summary">
+                    ${sections.map(section => `
+                        <div class="ticket-summary-section">
+                            <div class="flow-group-title">${escapeHtml(section.title)}</div>
+                            ${section.lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function summarizePayload(payload) {
+            const output = payload?.output_json ? safeParseJson(payload.output_json, payload.output_json) : payload;
+            const result = output?.result || output;
+            const sections = [];
+
+            if (result?.ticket) {
+                sections.push({
+                    title: 'Ticket',
+                    lines: [
+                        `Title: ${result.ticket.title || 'untitled'}`,
+                        `Type: ${result.ticket.type || 'unknown'}`,
+                        `Created: ${result.ticket.created_at || 'unknown'}`
+                    ]
+                });
+            }
+
+            if (result?.audit) {
+                sections.push({
+                    title: 'Audit Summary',
+                    lines: [
+                        `Lean files found: ${result.audit.ActualSrcFiles ?? 'unknown'}`,
+                        `Documented entries: ${result.audit.DocumentedEntries ?? 'unknown'}`,
+                        `Missing in proof map: ${result.audit.MissingInDoc ?? 'unknown'}`,
+                        `Import mismatches: ${result.audit.MismatchCount ?? 'unknown'}`
+                    ]
+                });
+            }
+
+            if (result?.paths) {
+                const offPath = result.paths.ModulesOffMillenniumPath || [];
+                sections.push({
+                    title: 'Dependency Path Check',
+                    lines: [
+                        `Target: ${result.paths.Target || 'unknown'}`,
+                        `Closure size: ${result.paths.DependencyClosureSize ?? 'unknown'}`,
+                        `Path count: ${result.paths.PathCountToMillennium ?? 'unknown'}`,
+                        `All modules reach target: ${result.paths.AllModulesReachMillennium ? 'yes' : 'no'}`,
+                        `Modules off target path: ${offPath.length}`
+                    ]
+                });
+            }
+
+            if (Array.isArray(result?.ranking)) {
+                sections.push({
+                    title: 'Cohesion Ranking',
+                    lines: result.ranking.slice(0, 5).map((item, index) =>
+                        `${index + 1}. ${item.File || 'unknown'} score=${item.Score ?? 'unknown'}`
+                    )
+                });
+            }
+
+            if (result?.tensor_extract) {
+                const candidates = result.tensor_extract.candidate_modules || [];
+                sections.push({
+                    title: 'TorchLean Tensor Readiness',
+                    lines: [
+                        `Status: ${result.tensor_extract.status || 'unknown'}`,
+                        `Candidate modules: ${candidates.length}`
+                    ]
+                });
+            }
+
+            if (Array.isArray(result?.readable_summary)) {
+                sections.push({ title: 'Badge Summary', lines: result.readable_summary });
+            }
+
+            return sections;
         }
 
         // ====================================================================

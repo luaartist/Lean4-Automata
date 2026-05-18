@@ -275,3 +275,171 @@ All foreign keys use `ON DELETE CASCADE` to maintain referential integrity:
 - Deleting a **symbol** cascades to dependencies
 
 This ensures no orphaned records in the database.
+
+## Lean/Wolfram Audit Mapping Extension
+
+Decision: extend the existing PostgreSQL schema rather than create a separate graph database. The current `files`, `symbols`, `dependencies`, and `file_dependencies` tables already model project-local Lean source and symbol edges. The mapping layer adds narrowly scoped tables around that core for non-local imports, Wolfram companion files, audit tickets, obligations, and future attestations.
+
+Draft migration: `0005_mapping_audit_context.py` adds the tables and views below for database-admin review.
+
+### Additional Tables
+
+`lean_import_references`
+
+- Purpose: direct Lean imports that do not resolve to a project-local file, including Mathlib, lake packages, external cloned repos, and unresolved imports.
+- Key fields: `project_id`, `source_file_id`, `import_name`, `target_scope`, `package_name`, `resolved_path`, `is_resolved`, `metadata`.
+- Important indexes: `(project_id, import_name)`, `(project_id, target_scope)`, `metadata` GIN.
+
+`wolfram_companion_maps`
+
+- Purpose: parsed companion maps from `../wolfram_lean_maps/*.wl`, linked to `files` when the matching Lean module exists.
+- Key fields: `project_id`, `file_id`, `module_name`, `wolfram_path`, `file_hash`, `raw_text`, `parsed_map`, optional `llm_synthesis`, `metadata`.
+- Important indexes: `(project_id, module_name)`, `file_id`, `parsed_map` GIN, `llm_synthesis` GIN.
+
+`audit_tickets`
+
+- Purpose: Postgres-backed ticket store for FastAPI/Go forum flow outputs while preserving the `tk_<ulid>` ID shape.
+- Key fields: `ticket_id`, `project_id`, `flow_name`, `ticket_type`, `title`, `description`, `input_json`, `output_json`, `status`, `duration_ms`, `tags`, `metadata`.
+- Important indexes: `(project_id, flow_name)`, `status`, `created_at DESC`, `tags` GIN, `output_json` GIN.
+
+`proof_obligations`
+
+- Purpose: queryable unresolved work items from audit flows, proof metrics, doc/import drift, and Wolfram-map gaps.
+- Key fields: `project_id`, optional `file_id`, optional `symbol_id`, optional `ticket_id`, `obligation_type`, `severity`, `status`, line span, `title`, `details`, `evidence`.
+- Important indexes: `(file_id, status)`, `(symbol_id, status)`, `(project_id, obligation_type)`, partial open-obligation index, `evidence` GIN.
+
+`ots_stamps`
+
+- Purpose: future OpenTimestamps evidence over modules, tickets, maps, snapshots, or badges.
+- Key fields: `project_id`, optional `ticket_id`, `subject_type`, `subject_key`, `subject_digest`, `stamp_provider`, `stamp_payload`, `verification_status`, nullable `bitcoin_block`.
+- Contract note: `bitcoin_block` remains nullable for pending stamps; public and sovereign badges require a confirmed stamp with a non-null block.
+
+`l2bl4_badges`
+
+- Purpose: L2BL4 badge issuance linked to evidence, tickets, and optional OTS stamps.
+- Key fields: `badge_id`, `project_id`, optional `ticket_id`, `subject_type`, `subject_key`, optional `subject_digest`, `badge_type`, `badge_class`, `issuance_status`, optional `ots_stamp_id`, optional `composite_sig_hash`, `contract_version`, `issued_to`, `issued_by`, `evidence`, `metadata`.
+- Contract note: `badge_class` is one of `public`, `sovereign`, or `keepsake`; `badge_type` remains the producer/domain label.
+
+### L2BL4 Evidence Contract
+
+Migration `0006_l2bl4_evidence_contract.py` keeps the badge contract generic: no Yang-Mills, Millennium, or current-project flow names are hardcoded into validity. Project-specific audit evidence stays in `audit_tickets.output_json` and badge `evidence`.
+
+Issued badge validity is:
+
+- `keepsake`: `audit_tickets.status = 'success'`; the trigger records a `keepsake_unverified` marker.
+- `public`: keepsake rule plus an `ots_stamps.ticket_id` row, `ots_stamps.bitcoin_block IS NOT NULL`, and a matching sorry obligation count.
+- `sovereign`: public rule plus `l2bl4_badges.composite_sig_hash IS NOT NULL`.
+
+The current row-oriented obligation representation uses `v_l2bl4_ticket_evidence_contract.reported_sorry_gated_count` from `audit_tickets.output_json` and `sorry_obligation_count` from sorry-like `proof_obligations` linked to the same `ticket_id`. Missing `sorry_gated`/`sorry_count` keys are accepted only when the linked sorry-like obligation count is zero.
+
+### Query Views
+
+`v_module_import_edges` unions project-local edges and external imports into a single adjacency surface:
+
+```sql
+SELECT *
+FROM v_module_import_edges
+WHERE project_id = $1 AND source_module = $2
+ORDER BY target_scope, target_module;
+```
+
+`v_module_json_lookup` returns a chart-ready JSONB document per module:
+
+```sql
+SELECT module_json
+FROM v_module_json_lookup
+WHERE project_id = $1 AND module_name = $2;
+```
+
+`v_cohesion_ranking` provides the database-backed successor to the current static cohesion flow:
+
+```sql
+SELECT module_name, inbound_local_edges, outbound_local_edges,
+       external_import_refs, wolfram_map_count,
+       unresolved_obligation_count, proof_completion, cohesion_score
+FROM v_cohesion_ranking
+WHERE project_id = $1
+ORDER BY cohesion_score DESC, module_name
+LIMIT $2;
+```
+
+`v_unresolved_obligations` gives the worklist surface:
+
+```sql
+SELECT module_name, symbol_full_name, obligation_type, severity, title, evidence
+FROM v_unresolved_obligations
+WHERE project_id = $1
+ORDER BY severity DESC, created_at DESC;
+```
+
+`v_l2bl4_ticket_evidence_contract` gives the endpoint-ready evidence gate:
+
+```sql
+SELECT ticket_id, audit_success, has_ticket_ots_stamp,
+       has_confirmed_ots_stamp, reported_sorry_gated_count,
+       sorry_obligation_count, obligation_count_matches, public_ready
+FROM v_l2bl4_ticket_evidence_contract
+WHERE ticket_id = $1;
+```
+
+`v_l2bl4_badge_validity` gives the current badge status after issuance:
+
+```sql
+SELECT badge_id, badge_class, issuance_status,
+       is_currently_valid, contract_status, contract_error
+FROM v_l2bl4_badge_validity
+WHERE badge_id = $1;
+```
+
+### Recursive Query Patterns
+
+Project-local module reachability should stay parameterized instead of materializing all source-target pairs by default:
+
+```sql
+WITH RECURSIVE module_walk AS (
+    SELECT
+        f.id AS file_id,
+        f.module_name,
+        0 AS depth,
+        ARRAY[f.id] AS path
+    FROM files f
+    WHERE f.project_id = $1 AND f.module_name = $2
+
+    UNION ALL
+
+    SELECT
+        target.id,
+        target.module_name,
+        module_walk.depth + 1,
+        module_walk.path || target.id
+    FROM module_walk
+    JOIN file_dependencies fd ON fd.source_file_id = module_walk.file_id
+    JOIN files target ON target.id = fd.target_file_id
+    WHERE module_walk.depth < $3
+      AND NOT target.id = ANY(module_walk.path)
+)
+SELECT * FROM module_walk WHERE depth > 0;
+```
+
+Inbound dependents use the same shape with `fd.target_file_id = module_walk.file_id` and `source.id = fd.source_file_id`.
+
+External imports should be joined after the local walk, not recursively followed until external repos are indexed as first-class projects:
+
+```sql
+SELECT import_name, target_scope, package_name, resolved_path, metadata
+FROM lean_import_references
+WHERE project_id = $1 AND source_file_id = $2
+ORDER BY target_scope, import_name;
+```
+
+### Staged Implementation
+
+Phase 1: apply the draft migration and keep current ingestion unchanged. Backfill `lean_import_references` from `files.imports` by subtracting imports already represented in `file_dependencies`. Backfill `wolfram_companion_maps` from `../wolfram_lean_maps/*.wl` using file hash plus a minimal parser that stores raw text and coarse JSON sections.
+
+Phase 2: persist audit-router executions into `audit_tickets` and emit `proof_obligations` for sorries, admits, declared axioms, proof-map drift, unresolved external imports, missing Wolfram maps, and failed flow runs. Keep Go SQLite tickets as a compatibility cache until Go_Red can dual-write or call the FastAPI ticket endpoint.
+
+Phase 3: add API routes over `v_module_json_lookup`, `v_module_import_edges`, `v_cohesion_ranking`, and `v_unresolved_obligations`. Cache responses in Redis using the existing `lean4:cache:` convention and invalidate by file/project after watcher updates.
+
+Phase 4: add OTS and L2BL4 producers. OTS writes should hash canonical JSON evidence at the application layer, then insert `ots_stamps` with nullable `bitcoin_block` until confirmation. Badge issuance should call `l2bl4_badge_contract_error(...)`, reference the same `subject_digest`, and store `l2bl4_ticket_evidence_snapshot(ticket_id)` inside `l2bl4_badges.evidence`.
+
+Phase 5: if external repos need reachability, index each external repo as its own `projects` row and add cross-project import resolution metadata before considering a graph database. PostgreSQL recursive CTEs are sufficient for the current module count and charting needs.

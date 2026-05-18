@@ -33,8 +33,7 @@ export function Header() {
       </button>
 
       <Link href="/" className="flex items-center gap-8 font-semibold text-lg">
-        <span className="text-accent-primary">Lean4</span>
-        <span>Automata</span>
+        <span className="text-accent-primary">Lean4-Automata</span>
       </Link>
 
       <div className="flex-1 max-w-[600px]">

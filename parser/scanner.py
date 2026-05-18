@@ -39,6 +39,11 @@ from parser.lean_parser import (
     ParsedSymbol,
     parse_file,
 )
+from tools.mapping_backfill import (
+    ImportSource,
+    collect_lake_package_prefixes,
+    replace_external_import_references,
+)
 
 log = logging.getLogger(__name__)
 
@@ -258,6 +263,23 @@ class FullScanner:
                     """,
                     edges,
                 )
+            external_imports = replace_external_import_references(
+                cur,
+                project_id=self.project_id,
+                import_sources=[
+                    ImportSource(
+                        file_id=f.file_id,
+                        module_name=_module_name_for(Path(f.rel_path)),
+                        relative_path=f.rel_path,
+                        imports=tuple(f.parsed.imports),
+                    )
+                    for f in files
+                ],
+                module_to_file_id=module_to_file_id,
+                package_prefixes=collect_lake_package_prefixes(self.root_dir),
+                provenance="scanner.phase2",
+            )
+            log.info("Phase 2: upserted %d external import references", external_imports)
         self._conn.commit()
         log.info("Phase 2: complete")
 

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" role="img" aria-labelledby="title desc">
+  <title id="title">Lean4-Automata proof observatory map</title>
+  <desc id="desc">A schematic product view showing Lean files, import graph, audit ticket, and evidence badge records.</desc>
+  <rect width="960" height="520" fill="#f7f8fa"/>
+  <text x="84" y="94" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700" fill="#172033">Lean4-Automata</text>
+  <text x="84" y="124" font-family="Inter, Arial, sans-serif" font-size="15" fill="#536070">Proof observatory state: source, graph, audit, evidence</text>
+
+  <g font-family="Inter, Arial, sans-serif">
+    <rect x="88" y="174" width="170" height="98" rx="8" fill="#eef3ff" stroke="#5570a8"/>
+    <text x="112" y="209" font-size="16" font-weight="700" fill="#172033">Lean source</text>
+    <text x="112" y="236" font-size="13" fill="#536070">files, imports, symbols</text>
+
+    <rect x="312" y="154" width="190" height="138" rx="8" fill="#f3f6f0" stroke="#6d8a55"/>
+    <text x="338" y="190" font-size="16" font-weight="700" fill="#172033">Import graph</text>
+    <circle cx="360" cy="232" r="12" fill="#5570a8"/>
+    <circle cx="410" cy="214" r="12" fill="#6d8a55"/>
+    <circle cx="452" cy="248" r="12" fill="#a67c35"/>
+    <path d="M372 228 L398 218 M420 220 L442 240 M372 236 L440 248" stroke="#536070" stroke-width="2" fill="none"/>
+
+    <rect x="558" y="174" width="164" height="98" rx="8" fill="#fff7e8" stroke="#a67c35"/>
+    <text x="584" y="209" font-size="16" font-weight="700" fill="#172033">Audit ticket</text>
+    <text x="584" y="236" font-size="13" fill="#536070">flow input and output</text>
+
+    <rect x="768" y="174" width="96" height="98" rx="8" fill="#f4f1f8" stroke="#715e91"/>
+    <text x="790" y="209" font-size="16" font-weight="700" fill="#172033">Badge</text>
+    <text x="790" y="236" font-size="13" fill="#536070">evidence</text>
+
+    <path d="M258 223 H312 M502 223 H558 M722 223 H768" stroke="#536070" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+    <rect x="88" y="340" width="776" height="72" rx="8" fill="#172033"/>
+    <text x="116" y="375" font-size="15" font-weight="700" fill="#ffffff">Source of truth</text>
+    <text x="260" y="375" font-size="14" fill="#d8dee8">Lean toolchain and source hashes remain authoritative.</text>
+    <text x="116" y="397" font-size="14" fill="#d8dee8">Audit tickets, timestamps, and badges preserve evidence around the proof work.</text>
+  </g>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#536070"/>
+    </marker>
+  </defs>
+</svg>

@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.lifespan import lifespan
 from app.core.middleware import request_id_middleware
+from app.audit.router import router as audit_router
+from app.l2bl4.router import router as l2bl4_router
 from app.query.router import router as query_router
 
 logging.basicConfig(
@@ -44,7 +46,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=False,  # Query API is anonymous; no cookies/JWT.
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "X-Request-ID", "Authorization"],
     expose_headers=["X-Request-ID"],
     max_age=600,
@@ -53,6 +55,8 @@ app.middleware("http")(request_id_middleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(query_router)
+app.include_router(audit_router)
+app.include_router(l2bl4_router)
 
 
 # ── Health endpoints ──────────────────────────────────────────────────────────
