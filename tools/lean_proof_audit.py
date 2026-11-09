@@ -397,13 +397,16 @@ def main():
         sys.exit(1)
 
     # Determine project root (look for Lean_Proof_Map.txt)
-    project_root = os.getcwd()
-    while project_root != "/":
-        if Path(project_root, "Lean_Proof_Map.txt").exists():
+    curr = Path.cwd().resolve()
+    project_root = str(curr)
+    while True:
+        if (curr / "Lean_Proof_Map.txt").exists():
+            project_root = str(curr)
             break
-        project_root = str(Path(project_root).parent)
-    else:
-        project_root = os.getcwd()
+        if curr.parent == curr:
+            project_root = os.getcwd()
+            break
+        curr = curr.parent
 
     graph = LeanImportGraph(project_root)
 

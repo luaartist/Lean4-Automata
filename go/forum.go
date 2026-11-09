@@ -2211,6 +2211,23 @@ func registerForumRoutes() {
 	http.HandleFunc("/api/llm/chat", handleLLMChat)
 	http.HandleFunc("/api/llm/context", handleLLMContext)
 
+	// Static UI and paper_trader file servers
+	uiDir := getEnv("LEAN4A_UI_DIR", "../../Automata/ui")
+	if _, err := os.Stat(uiDir); err == nil {
+		http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir(uiDir))))
+	}
+	ptDir := getEnv("LEAN4A_PAPER_TRADER_DIR", "../../Automata/paper_trader")
+	if _, err := os.Stat(ptDir); err == nil {
+		http.Handle("/paper_trader/", http.StripPrefix("/paper_trader/", http.FileServer(http.Dir(ptDir))))
+	}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/ui/coherence_runner.html", http.StatusTemporaryRedirect)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
 	log.Println("✅ Forum routes registered")
 }
 
